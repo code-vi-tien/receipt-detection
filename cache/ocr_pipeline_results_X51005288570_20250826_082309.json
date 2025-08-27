@@ -1,0 +1,78 @@
+{
+  "input_image": "E:/Bill_Detect/image_test/X51005288570.jpg",
+  "timestamp": "2025-08-26T08:23:01.737317",
+  "yolo_detection": {
+    "detections": [
+      {
+        "bbox": [
+          0.0,
+          0.0,
+          447.0,
+          1127.0
+        ],
+        "confidence": 0.9736369848251343,
+        "class": "Receipt",
+        "x1": 0.0,
+        "y1": 0.0,
+        "x2": 447.0,
+        "y2": 1127.0
+      }
+    ],
+    "best_detection": {
+      "bbox": [
+        0.0,
+        0.0,
+        447.0,
+        1127.0
+      ],
+      "confidence": 0.9736369848251343,
+      "class": "Receipt",
+      "x1": 0.0,
+      "y1": 0.0,
+      "x2": 447.0,
+      "y2": 1127.0
+    },
+    "bill_crop": "[[[253 254 250]\n  [253 254 250]\n  [253 254 250]\n  ...\n  [254 251 237]\n  [252 249 235]\n  [251 248 234]]\n\n [[253 254 250]\n  [253 254 250]\n  [253 254 250]\n  ...\n  [253 250 236]\n  [248 245 231]\n  [248 245 231]]\n\n [[254 255 251]\n  [254 255 251]\n  [254 255 251]\n  ...\n  [253 249 238]\n  [246 242 231]\n  [250 246 235]]\n\n ...\n\n [[175 170 167]\n  [159 156 152]\n  [156 153 149]\n  ...\n  [254 255 253]\n  [254 255 253]\n  [254 255 253]]\n\n [[204 199 196]\n  [180 175 172]\n  [160 157 153]\n  ...\n  [254 255 253]\n  [254 255 253]\n  [254 255 253]]\n\n [[204 200 195]\n  [186 182 177]\n  [177 173 168]\n  ...\n  [254 255 253]\n  [254 255 253]\n  [254 255 253]]]",
+    "annotated_image": "[[[  0 255   0]\n  [  0 255   0]\n  [  0 255   0]\n  ...\n  [  0 255   0]\n  [  0 255   0]\n  [  0 255   0]]\n\n [[  0 255   0]\n  [  0 255   0]\n  [  0 255   0]\n  ...\n  [  0 255   0]\n  [  0 255   0]\n  [  0 255   0]]\n\n [[  0 255   0]\n  [  0 255   0]\n  [  0 255   0]\n  ...\n  [  0 255   0]\n  [  0 255   0]\n  [  0 255   0]]\n\n ...\n\n [[  0 255   0]\n  [  0 255   0]\n  [  0 255   0]\n  ...\n  [254 255 253]\n  [  0 255   0]\n  [  0 255   0]]\n\n [[  0 255   0]\n  [  0 255   0]\n  [  0 255   0]\n  ...\n  [  0 255   0]\n  [  0 255   0]\n  [  0 255   0]]\n\n [[  0 255   0]\n  [  0 255   0]\n  [  0 255   0]\n  ...\n  [  0 255   0]\n  [  0 255   0]\n  [  0 255   0]]]",
+    "crop_coordinates": {
+      "x1": 0,
+      "y1": 0,
+      "x2": 447,
+      "y2": 1127
+    }
+  },
+  "svtr_results": {
+    "model_name": "SVTR v6",
+    "texts": [],
+    "total_texts": 0,
+    "processing_time": 0,
+    "raw_result": {
+      "image_name": "temp_svtr_input.jpg",
+      "model": "SVTR v6",
+      "error": "PaddleOCR.predict() got an unexpected keyword argument 'cls'",
+      "status": "failed"
+    }
+  },
+  "paddle_results": {
+    "model_name": "PaddleOCR",
+    "texts": [],
+    "total_texts": 0,
+    "raw_result": []
+  },
+  "comparison": {
+    "svtr_stats": {
+      "total_texts": 0,
+      "avg_confidence": 0,
+      "max_confidence": 0,
+      "min_confidence": 0,
+      "high_confidence_count": 0
+    },
+    "paddle_stats": {
+      "total_texts": 0,
+      "avg_confidence": 0,
+      "max_confidence": 0,
+      "min_confidence": 0,
+      "high_confidence_count": 0
+    }
+  }
+}
