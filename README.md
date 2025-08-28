@@ -112,13 +112,13 @@ Streamlined flow: **Select → Process → Analyze → Export**.
 ### Mermaid – Overall Pipeline
 ```mermaid
 graph TD
-    A[📁 Input Image] --> B[🎯 YOLO Detection]
-    B --> C[✂️ Bill Cropping]
-    C --> D[🤖 DBNet (Text Detection)]
-    D --> E[🤖 SVTR (Text Recognition)]
+    A[📁 Input Image] 
+    A --> B[🎯 YOLO Detection]
+    B --> C[⚙️ Image Preprocessing]
+    C --> D[🔎 DBNet (Text Detection)]
+    D --> E[🧠 SVTR (Text Recognition)]
     E --> G[💾 Export Results]
 ```
-
 ### UI Layout (ASCII Diagram)
 ```
 +--------------------------+--------------------------+------------------------+
