@@ -6,7 +6,7 @@ from paddleocr import PaddleOCR
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
 ocr = PaddleOCR(
-    det_model_dir=r"model_son_ocr_1/ch_db_res18",
+    det_model_dir=r"./ch_db_res18",
     rec=True,  # Enable text recognition
     use_angle_cls=False,
     use_gpu=False,  # CPU mode for compatibility

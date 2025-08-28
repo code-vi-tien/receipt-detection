@@ -2,13 +2,13 @@
 **Author:** Tôn Thất Thanh Tuấn  
 **Date:** 2025-08-25
 
-This system combines **YOLOv8** (detection), **SVTR v6** (primary OCR), and **PaddleOCR** (backup/comparison), with a modern **PySide6** GUI. This README merges the content of `README.md` (overview & pipeline) and `README_GUI.md` (GUI highlights).
+This system combines **YOLOv8** (detection), **SVTR v6** (primary OCR), and **PaddleOCR** (backup/comparison), all integrated into a modern **PySide6** GUI. This README merges an overview of the pipeline with details on the GUI and project structure.
 
 ---
 
 ## 🧭 Table of Contents
 - [Overview](#overview)
-- [GUI Highlights (Distinctive points from README_GUI)](#gui-highlights-distinctive-points-from-readme_gui)
+- [GUI Highlights](#gui-highlights)
 - [Key Features](#key-features)
 - [Quick Start](#quick-start)
 - [How to Use](#how-to-use)
@@ -24,98 +24,86 @@ This system combines **YOLOv8** (detection), **SVTR v6** (primary OCR), and **Pa
 
 ## 🌟 Overview
 **Bill OCR System** is an AI application that automatically detects bill/receipt regions and recognizes text with high accuracy. The pipeline consists of:
-- **🎯 YOLO v8**: Detect and crop bill regions
-- **🤖 SVTR v6**: Primary OCR with strong accuracy
-- **🧠 PaddleOCR**: Backup OCR and cross-checking
+- **🎯 YOLO v8**: Detects and crops bill regions from the input image.
+- **🤖 SVTR v6**: Performs primary OCR with high accuracy.
+- **🧠 PaddleOCR**: Works as a backup OCR engine and for cross-checking results.
 
-The GUI is in Vietnamese, with a dark theme and real‑time result analytics.
+The GUI (implemented in Vietnamese) uses a modern dark theme and provides real‑time result analytics.
 
 ---
 
-## 🎨 GUI Highlights (Distinctive points from README_GUI)
-> This section summarizes what makes the GUI build special.
+## 🎨 GUI Highlights
+> This section summarizes what makes the GUI interface special.
 
 ### 🖼 3‑Panel Modern Layout
-- **Image Input (~35%)** – select & preview images
-- **YOLO Detection (~35%)** – visualize detection results
-- **OCR Results (~30%)** – tabular results & comparisons
+- **Image Input (~35%)** – select & preview images.
+- **YOLO Detection (~35%)** – visualize detection results.
+- **OCR Results (~30%)** – displays tabular results & model comparison.
 
 ### 🎨 Modern Dark Theme & UX
-- Professional dark theme with green accent
-- Modern buttons (hover), tables with **color‑coded confidence**:
+- Professional dark theme with green accent.
+- Modern buttons with hover effects and tables with **color‑coded confidence**:
   - >0.95: deep green • >0.85: light green • >0.7: yellow • >0.5: orange • ≤0.5: red
-- **Collapsible Log Window**, **separate real‑time status** for detection and OCR
-- **Auto‑scaling** images, borders indicating states
+- **Collapsible Log Window** and separate real‑time status panels for detection and OCR.
+- **Auto‑scaling** images with borders indicating status.
 
 ### 🔧 UI/Tech Components
-- **QSplitter** (3‑panel), **QTabWidget** (tabs: Model Comparison, SVTR v6, PaddleOCR)
-- **QTableWidget** (advanced tables), **QScrollArea** (zoom/scroll images)
-- Custom CSS on top of Fusion style
+- **QSplitter** for the 3‑panel layout.
+- **QTabWidget** (tabs: Model Comparison, SVTR v6 Details, PaddleOCR Details).
+- **QTableWidget** for detailed results and **QScrollArea** for image viewing.
+- Custom CSS on top of the Fusion style.
 
-> These points differentiate the GUI edition (from `README_GUI.md`) from the core pipeline described in `README.md`, focusing on user experience.
+> These enhancements focus on a responsive UX and clear visualization of both detection and OCR outputs.
 
 ---
 
 ## 📋 Key Features
 ### 🔍 Detection & Processing
-- Auto detection (YOLO) → Smart cropping → Pre‑processing
-- Dual OCR (SVTR v6 + PaddleOCR) & **Confidence Analysis**
+- Automatic detection (YOLO) → Smart cropping → Pre‑processing.
+- Dual OCR (SVTR v6 + PaddleOCR) with confidence analysis.
 
 ### 📊 Analytics & Stats
-- Compare two engines with 10+ metrics
-- Intuitive tables and charts
+- Compare two OCR engines with multiple performance metrics.
+- Intuitive tables and charts for analysis.
 
 ### 🎛 GUI & UX
-- Vietnamese UI, **real‑time progress**, **responsive layout**
-- Modern layout prioritizing Detection & Results areas
+- Vietnamese UI with real‑time progress and responsive layout.
+- Modern interface prioritizing detection and results display.
 
 ### 💾 Export & Storage
-- **Export JSON** (bbox, confidence, timestamps)
-- Batch processing & history (in progress)
+- **Export JSON** files (including bounding boxes, confidence scores, timestamps).
+- Batch processing envisaged for history management.
 
 ---
 
 ## 🚀 Quick Start
 
-### 1) Environment check
+### 1) Environment Setup
 ```bash
 python -m venv venv
-source venv/bin/activate   # Linux/macOS
-venv\Scripts\activate      # Windows
+# Activate your virtual environment:
+# Linux/macOS: source venv/bin/activate
+# Windows: venv\Scripts\activate
 pip install -r requirements.txt
 python test_setup.py
 ```
 
-### 2) Run the app
-**Linux:**
+### 2) Run the App
 ```bash
-./run_linux.sh
-```
-**Windows:**
-```cmd
-run_windows.bat
-```
-**Manual:**
-```bash
-python ocr_pipeline_gui.py       # open the modern GUI
-python demo_complete_pipeline.py # run the full pipeline (CLI)
-python benchmark_ocr.py --images 10  # quick benchmark
+python gui.py       # Launch the GUI
 ```
 
-> If you run in Docker/WSL/headless without a display:
-> ```bash
-> xvfb-run -s "-screen 0 1920x1080x24" python ocr_pipeline_gui.py
-> ```
+> After installing the requirements, simply run **gui.py** to start the application.
 
 ---
 
 ## 🎮 How to Use
-1. **Select an image**: click “📁 Select Image” (see samples in `image_test/`)
-2. **Process**: click “🚀 Process” to run detection + OCR
-3. **Analyze**: review tabs **Model Comparison / SVTR v6 / PaddleOCR**
-4. **Export JSON**: click “💾 Export” to save results (with metadata)
+1. **Select an Image**: Click “📁 Select Image” (sample images are in `image_test/`).
+2. **Process**: Click “🚀 Process” to run detection and OCR.
+3. **Analyze**: Review the results in the “Model Comparison”, “SVTR v6 Details”, and “PaddleOCR Details” tabs.
+4. **Export JSON**: Click “💾 Export” to save the result (includes metadata).
 
-Optimized flow: **Select → Process → Analyze → Export**.
+Streamlined flow: **Select → Process → Analyze → Export**.
 
 ---
 
@@ -126,72 +114,59 @@ Optimized flow: **Select → Process → Analyze → Export**.
 graph TD
     A[📁 Input Image] --> B[🎯 YOLO Detection]
     B --> C[✂️ Bill Cropping]
-    C --> D[🤖 SVTR v6 OCR]
-    C --> E[🧠 PaddleOCR]
-    D --> F[📊 Performance Analysis]
-    E --> F
-    F --> G[💾 Export Results]
+    C --> D[🤖 DBNet (Text Detection)]
+    D --> E[🤖 SVTR (Text Recognition)]
+    E --> G[💾 Export Results]
 ```
 
-### UI – 3‑column layout (ASCII)
+### UI Layout (ASCII Diagram)
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                    AI OCR Pipeline • YOLO Detection • SVTR v6 • PaddleOCR   │
-├─────────────┬─────────────────────────────────────┬─────────────────────────┤
-│ 📁 Select   │              🎯 YOLO Detection       │    📊 OCR Analysis    │
-│ 🚀 Process  │          Analysis & Visualization    │       Results           │
-│ 💾 Export   │                                     │                         │
-├─────────────┼─────────────────────────────────────┼─────────────────────────┤
-│📷 Image    |                                      │ 📊 Model Comparison     │
-│  Input      │         Detection Display           │ 🤖 SVTR v6 Details     │
-│             │       with Statistics               │ 🧠 PaddleOCR Details   │
-│ ┌─────────┐ │                                     │                         │
-│ │Original │ │                                     │ Tables with confidence  │
-│ │Bill Crop│ │                                     │ color-coding            │
-│ └─────────┘ │                                     │                         │
-├─────────────┴─────────────────────────────────────┴─────────────────────────┤
-│ Status: Ready • 📋 Show/Hide Logs                                           │
-└─────────────────────────────────────────────────────────────────────────────┘
++--------------------------+--------------------------+------------------------+
+|    Select / Process /    |      YOLO Detection      |      OCR Analysis      |
+|          Export          |   Visualization & Stats  |    Result Comparison   |
++==========================+==========================+========================+
+| Image Input              | Detection Display        | Model Comparison       |
+| [Original / Cropped]     | with Statistics          | and Detailed Breakdown |
++--------------------------+--------------------------+------------------------+
 ```
 
 ---
 
 ## 📁 Project Structure
 ```
-Bill_Detect/
-├── ocr_pipeline_gui.py          # main GUI
-├── YOLO_Coor.py                 # YOLO detector
-├── test_setup.py                # environment check
-├── requirements.txt             # dependencies
-├── HUONG_DAN_CAI_DAT.md         # installation guide
-├── run_linux.sh                 # Linux script
-├── run_windows.bat              # Windows script
-├── bill_models.pt               # YOLO model
-├── image_test/                  # test images
-├── svtr_v6_ocr/                 # SVTR v6 model
-├── yolo_detect_bill/            # YOLO detector dir
-└── training_data/               # training data
+receipt-detection/
+├── gui.py                     # Main GUI application
+├── test_setup.py              # Environment and dependency check
+├── requirements.txt           # Dependencies list
+├── image_test/                # Sample images for testing
+├── gui_result/                # Folder for exported JSON results (auto-created)
+├── yolo_detect_bill/          # YOLO detection module and models
+│   └── bill_models.pt         # YOLO model file (used via subfolder path)
+├── svtr_v6_ocr/               # SVTR v6 OCR module and models
+│   └── svtr_model.onnx        # (Example) SVTR v6 model file – update if needed
+└── paddle_ocr/                # PaddleOCR module and models
+    └── paddle_model.pdparams  # (Example) PaddleOCR model parameters – update if needed
 ```
 
 ---
 
 ## ⚙️ Configuration & Tuning
-Tunable parameters in code (typical defaults):
-- **YOLO confidence threshold**: `0.1` (inside `OCRProcessingThread`)
-- **Max image display size**: `600px` (image view helper)
-- **Crop padding**: `10px` (YOLO → crop pipeline)
+Key tunable parameters (typically found in the code):
+- **YOLO confidence threshold**: `0.1` (in `OCRProcessingThread`).
+- **Image display maximum size**: `600px`.
+- **Cropping padding**: `10px` (applied in YOLO detection).
 
 ---
 
 ## ⚡ Performance & Comparison
-| Model | Texts Detected | Avg Confidence | High Conf (>0.9) | Processing Time |
-|---|---|---|---|---|
-| **SVTR v6** | 44 | 0.931 | 89% | ~2.3s |
-| **PaddleOCR** | 108 | 0.913 | 67% | ~1.8s |
+| Model        | Texts Detected | Avg Confidence | High Conf (>0.9) | Processing Time |
+|--------------|----------------|----------------|------------------|-----------------|
+| **SVTR v6**  | 44             | 0.931          | 89%              | ~2.3s           |
+| **PaddleOCR**| 108            | 0.913          | 67%              | ~1.8s           |
 
-- **SVTR v6**: fewer texts but higher accuracy  
-- **PaddleOCR**: more texts but potentially noisier  
-- **Recommendation**: Combine both for balanced **coverage** and **accuracy**
+- **SVTR v6**: Returns fewer texts but with higher accuracy.
+- **PaddleOCR**: Returns more texts with slightly lower overall confidence.
+- **Recommendation**: Use a combination to balance coverage and accuracy.
 
 ---
 
@@ -199,26 +174,26 @@ Tunable parameters in code (typical defaults):
 - `docs/screenshots/main_interface.png`
 - `docs/screenshots/analysis_results.png`
 - `docs/screenshots/yolo_detection.png`
-
-*(More to be added)*
+*(Additional screenshots can be added.)*
 
 ---
 
 ## 🧑‍💻 Development & Contributing
-**Code style:** Python 3.8+, PySide6, PEP 8, complete docstrings (EN for technical, VI for UI).  
-**Contribution flow:**
-1. Fork → create branch `feature/*`
-2. Commit & Push
-3. Open a Pull Request
+**Code Style:** Python 3.8+, PySide6, PEP 8, comprehensive docstrings  
+**Contribution Flow:**
+1. Fork the repository and create a branch (`feature/*`).
+2. Commit & push your changes.
+3. Open a Pull Request.
 
-**Bug report:** include OS, Python version, full logs, reproduction steps, screenshots (if any).
+**Bug Reports:** Include OS, Python version, full logs, reproduction steps, and screenshots (if any).
 
 ---
 
 ## 🙏 Acknowledgments & Contact
 - **YOLOv8** – Ultralytics
-- **SVTR** – STR research community
+- **SVTR v6** – STR research community
 - **PaddleOCR** – PaddlePaddle team
 - **PySide6/Qt** – Qt team
 
-**Author:** Tôn Thất Thanh Tuấn
+**Author:** Tôn Thất Thanh Tuấn  
+Feel free to reach out for questions or contributions.

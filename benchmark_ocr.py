@@ -8,6 +8,7 @@ from pathlib import Path
 import json
 import time
 import sys
+import os
 from statistics import mean, stdev
 
 # Add paths
@@ -23,7 +24,7 @@ class OCRBenchmark:
     
     def __init__(self):
         # Initialize YOLO
-        yolo_model_path = Path(__file__).parent / "yolo_detect_bill" / "bill_models.pt"
+        yolo_model_path = os.path.join(os.path.dirname(__file__), "yolo_detect_bill", "bill_models.pt")
         self.yolo_detector = BillDetector(model_path=str(yolo_model_path))
         self.yolo_detector.load_model()
         
@@ -32,7 +33,8 @@ class OCRBenchmark:
         
         # Initialize PaddleOCR
         from paddleocr import PaddleOCR
-        det_model_path = str(Path(__file__).parent / "paddle_ocr" / "ch_db_res18")
+        det_model_path = 'paddle_ocr'
+        
         self.paddle_engine = PaddleOCR(
             det_model_dir=det_model_path,
             rec=True,
@@ -250,7 +252,7 @@ class OCRBenchmark:
         print("-" * 60)
         print(f"🏆 Overall Winner: {'SVTR v6' if svtr_wins > paddle_wins else 'PaddleOCR'} ({max(svtr_wins, paddle_wins)}/{svtr_wins + paddle_wins} images)")
         
-        # Save detailed results
+        # Save detailed results into folder benchmark_ocr_result
         benchmark_data = {
             'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
             'summary': {
@@ -265,10 +267,15 @@ class OCRBenchmark:
             'paddle_results': paddle_results
         }
         
-        with open('benchmark_results.json', 'w', encoding='utf-8') as f:
+        results_folder = os.path.join(os.path.dirname(__file__), "benchmark_ocr_result")
+        if not os.path.exists(results_folder):
+            os.makedirs(results_folder)
+        results_file = os.path.join(results_folder, "benchmark_results.json")
+        
+        with open(results_file, 'w', encoding='utf-8') as f:
             json.dump(benchmark_data, f, indent=2, ensure_ascii=False, default=str)
         
-        print(f"\n💾 Detailed results saved to: benchmark_results.json")
+        print(f"\n💾 Detailed results saved to: {results_file}")
         print("🎉 Benchmark completed!")
 
 if __name__ == "__main__":

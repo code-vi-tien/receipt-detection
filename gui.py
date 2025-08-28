@@ -58,7 +58,7 @@ class PaddleOCREngine:
             from paddleocr import PaddleOCR
             
             # Use the custom detection model path
-            det_model_path = str(Path(__file__).parent / "paddle_ocr" / "ch_db_res18")
+            det_model_path = "paddle_ocr"
             
             self.ocr = PaddleOCR(
                 det_model_dir=det_model_path,
@@ -320,12 +320,19 @@ class OCRProcessingThread(QThread):
         }
     
     def _save_results(self, results: Dict):
-        """Save results to JSON"""
+        """Save results to JSON in folder gui_result"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         base_name = Path(self.image_path).stem
         filename = f"ocr_pipeline_results_{base_name}_{timestamp}.json"
         
-        with open(filename, 'w', encoding='utf-8') as f:
+        # Tạo folder gui_result nếu chưa có
+        results_folder = os.path.join(os.path.dirname(__file__), "gui_result")
+        if not os.path.exists(results_folder):
+            os.makedirs(results_folder)
+            
+        file_path = os.path.join(results_folder, filename)
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(results, f, indent=2, ensure_ascii=False, default=str)
 
 

@@ -154,7 +154,6 @@ class SVTRv6TrueInference:
             self.predictor = PaddleOCR(lang='en')
             
             print("✅ SVTR v6 custom predictor ready!")
-            print("🎯 Model in use: SVTR v6 checkpoint from model_kien_ocr_2/")
             print("⚠️ Note: Currently using standard PaddleOCR, will try to integrate custom model")
             return True
             
