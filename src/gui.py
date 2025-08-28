@@ -310,14 +310,25 @@ class OCRProcessingThread(QThread):
                 'avg_confidence': np.mean(svtr_confidences) if svtr_confidences else 0,
                 'max_confidence': max(svtr_confidences) if svtr_confidences else 0,
                 'min_confidence': min(svtr_confidences) if svtr_confidences else 0,
-                'high_confidence_count': sum(1 for c in svtr_confidences if c > 0.9)
+                'high_confidence_count': sum(1 for c in svtr_confidences if c > 0.9),
+                'very_high_confidence_count': sum(1 for c in svtr_confidences if c > 0.95),
+                'good_confidence_count': sum(1 for c in svtr_confidences if c > 0.8), 
+                'low_confidence_count': sum(1 for c in svtr_confidences if c < 0.5),
+                'confidence_std': np.std(svtr_confidences),
+                'confidence_median': np.median(svtr_confidences)
+                
             },
             'paddle_stats': {
                 'total_texts': len(paddle_texts),
                 'avg_confidence': np.mean(paddle_confidences) if paddle_confidences else 0,
                 'max_confidence': max(paddle_confidences) if paddle_confidences else 0,
                 'min_confidence': min(paddle_confidences) if paddle_confidences else 0,
-                'high_confidence_count': sum(1 for c in paddle_confidences if c > 0.9)
+                'high_confidence_count': sum(1 for c in paddle_confidences if c > 0.9),
+                'very_high_confidence_count': sum(1 for c in paddle_confidences if c > 0.95),
+                'good_confidence_count': sum(1 for c in paddle_confidences if c > 0.8), 
+                'low_confidence_count': sum(1 for c in paddle_confidences if c < 0.5),
+                'confidence_std': np.std(paddle_confidences),
+                'confidence_median': np.median(paddle_confidences)
             }
         }
     
@@ -327,7 +338,7 @@ class OCRProcessingThread(QThread):
         base_name = Path(self.image_path).stem
         filename = f"ocr_pipeline_results_{base_name}_{timestamp}.json"
         
-        # Tạo folder gui_result nếu chưa có
+        # Create folder 'gui_result' if it does not exist
         results_folder = Path(__file__).parent.parent / "gui_result"
         if not os.path.exists(results_folder):
             os.makedirs(results_folder)
@@ -343,7 +354,7 @@ class OCRPipelineGUI(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Hệ Thống OCR Hóa Đơn - Phát Hiện & Nhận Dạng Văn Bản Thông Minh")
+        self.setWindowTitle("Receipt OCR System – Smart Detection & Text Recognition")
         self.setGeometry(50, 50, 1700, 1000)
         
         # Initialize engines
@@ -540,7 +551,7 @@ class OCRPipelineGUI(QMainWindow):
         header_layout.setSpacing(15)
         
         # App title (compact)
-        title_label = QLabel("Hệ Thống OCR Hóa Đơn")
+        title_label = QLabel("OCR-based Receipt Recognition System")
         title_font = QFont()
         title_font.setPointSize(18)
         title_font.setBold(True)
@@ -549,26 +560,26 @@ class OCRPipelineGUI(QMainWindow):
         header_layout.addWidget(title_label)
         
         # Subtitle
-        subtitle_label = QLabel("Phát Hiện YOLO • SVTR v6 • PaddleOCR")
+        subtitle_label = QLabel("Detected YOLO • SVTR v6 • PaddleOCR")
         subtitle_label.setStyleSheet("color: #888888; font-size: 12px; margin: 5px;")
         header_layout.addWidget(subtitle_label)
         
         header_layout.addStretch()
         
         # Control buttons (inline) - Increased width
-        self.select_btn = QPushButton("📁 Chọn Ảnh")
-        self.select_btn.setFixedSize(140, 35)
+        self.select_btn = QPushButton("📁 Select Image")
+        self.select_btn.setFixedSize(150, 35)
         self.select_btn.clicked.connect(self.select_image)
         header_layout.addWidget(self.select_btn)
         
-        self.process_btn = QPushButton("🚀 Xử Lý")
-        self.process_btn.setFixedSize(120, 35)
+        self.process_btn = QPushButton("🚀 Processing")
+        self.process_btn.setFixedSize(150, 35)
         self.process_btn.setEnabled(False)
         self.process_btn.clicked.connect(self.process_image)
         header_layout.addWidget(self.process_btn)
         
-        self.save_btn = QPushButton("💾 Xuất Kết Quả")
-        self.save_btn.setFixedSize(140, 35)
+        self.save_btn = QPushButton("💾 Export Results")
+        self.save_btn.setFixedSize(150, 35)
         self.save_btn.setEnabled(False)
         self.save_btn.clicked.connect(self.save_results)
         header_layout.addWidget(self.save_btn)
@@ -609,12 +620,12 @@ class OCRPipelineGUI(QMainWindow):
     
     def create_enhanced_image_panel(self) -> QWidget:
         """Create enhanced image panel"""
-        panel = QGroupBox("📷 Ảnh Đầu Vào")
+        panel = QGroupBox("📷 Input Image")
         layout = QVBoxLayout(panel)
         layout.setSpacing(10)
         
         # Current image status
-        self.current_image_label = QLabel("Chưa chọn ảnh")
+        self.current_image_label = QLabel("No image selected")
         self.current_image_label.setStyleSheet("""
             background-color: #4a4a4a; 
             padding: 8px; 
@@ -629,7 +640,7 @@ class OCRPipelineGUI(QMainWindow):
         self.image_tabs.setTabPosition(QTabWidget.South)
         
         # Original image
-        self.original_image_label = QLabel("Kéo thả ảnh hoặc nhấn Chọn Ảnh")
+        self.original_image_label = QLabel("Drag and drop an image or click Select Imag")
         self.original_image_label.setAlignment(Qt.AlignCenter)
         self.original_image_label.setMinimumHeight(350)
         self.original_image_label.setStyleSheet("""
@@ -643,10 +654,10 @@ class OCRPipelineGUI(QMainWindow):
         original_scroll = QScrollArea()
         original_scroll.setWidget(self.original_image_label)
         original_scroll.setWidgetResizable(True)
-        self.image_tabs.addTab(original_scroll, "Ảnh Gốc")
+        self.image_tabs.addTab(original_scroll, "Original image")
         
         # Bill crop
-        self.crop_image_label = QLabel("Vùng hóa đơn sẽ hiển thị ở đây")
+        self.crop_image_label = QLabel("The receipt area will be displayed here")
         self.crop_image_label.setAlignment(Qt.AlignCenter)
         self.crop_image_label.setStyleSheet("""
             border: 2px solid #555555; 
@@ -658,19 +669,19 @@ class OCRPipelineGUI(QMainWindow):
         crop_scroll = QScrollArea()
         crop_scroll.setWidget(self.crop_image_label)
         crop_scroll.setWidgetResizable(True)
-        self.image_tabs.addTab(crop_scroll, "Vùng Hóa Đơn")
+        self.image_tabs.addTab(crop_scroll, "Receipt area")
         
         layout.addWidget(self.image_tabs)
         return panel
     
     def create_detection_panel(self) -> QWidget:
         """Create YOLO detection visualization panel"""
-        panel = QGroupBox("🎯 Phân Tích Phát Hiện YOLO")
+        panel = QGroupBox("🎯 YOLO Detection Analysis")
         layout = QVBoxLayout(panel)
         layout.setSpacing(10)
         
         # Detection status
-        self.detection_status_label = QLabel("Sẵn sàng phát hiện")
+        self.detection_status_label = QLabel("Detection Ready")
         self.detection_status_label.setStyleSheet("""
             background-color: #4a4a4a; 
             padding: 8px; 
@@ -681,7 +692,7 @@ class OCRPipelineGUI(QMainWindow):
         layout.addWidget(self.detection_status_label)
         
         # YOLO detection display with scroll
-        self.yolo_image_label = QLabel("Kết quả phát hiện YOLO sẽ hiển thị ở đây")
+        self.yolo_image_label = QLabel("YOLO detection results will be displayed here")
         self.yolo_image_label.setAlignment(Qt.AlignCenter)
         self.yolo_image_label.setMinimumHeight(450)
         self.yolo_image_label.setStyleSheet("""
@@ -700,7 +711,7 @@ class OCRPipelineGUI(QMainWindow):
         layout.addWidget(yolo_scroll)
         
         # Enhanced detection statistics
-        self.detection_stats_label = QLabel("Thống kê phát hiện sẽ hiển thị ở đây")
+        self.detection_stats_label = QLabel("Detection statistics will be displayed here")
         self.detection_stats_label.setWordWrap(True)
         self.detection_stats_label.setMaximumHeight(200)
         self.detection_stats_label.setStyleSheet("""
@@ -723,12 +734,12 @@ class OCRPipelineGUI(QMainWindow):
     
     def create_enhanced_results_panel(self) -> QWidget:
         """Create enhanced OCR results panel"""
-        panel = QGroupBox("📊 Kết Quả Phân Tích OCR")
+        panel = QGroupBox("📊 OCR Analysis Results")
         layout = QVBoxLayout(panel)
         layout.setSpacing(10)
         
         # Processing status
-        self.processing_status_label = QLabel("Sẵn sàng xử lý OCR")
+        self.processing_status_label = QLabel("OCR processing ready")
         self.processing_status_label.setStyleSheet("""
             background-color: #4a4a4a; 
             padding: 8px; 
@@ -743,19 +754,19 @@ class OCRPipelineGUI(QMainWindow):
         
         # Model comparison tab
         comparison_widget = self.create_enhanced_comparison_tab()
-        self.results_tabs.addTab(comparison_widget, "📊 So Sánh Mô Hình")
+        self.results_tabs.addTab(comparison_widget, "📊 Model Comparison")
         
         # SVTR details tab
         svtr_widget = self.create_enhanced_detail_tab("SVTR v6")
-        self.results_tabs.addTab(svtr_widget, "🤖 Chi Tiết SVTR v6")
+        self.results_tabs.addTab(svtr_widget, "🤖 SVTR v6 Details")
         
         # PaddleOCR details tab
         paddle_widget = self.create_enhanced_detail_tab("PaddleOCR")
-        self.results_tabs.addTab(paddle_widget, "🧠 Chi Tiết PaddleOCR")
+        self.results_tabs.addTab(paddle_widget, "🧠 PaddleOCR Details")
         
         # Performance analysis tab
         performance_widget = self.create_performance_analysis_tab()
-        self.results_tabs.addTab(performance_widget, "⚡ Phân Tích Hiệu Suất")
+        self.results_tabs.addTab(performance_widget, "⚡ Performance Analysis")
         
         layout.addWidget(self.results_tabs)
         return panel
@@ -767,7 +778,7 @@ class OCRPipelineGUI(QMainWindow):
         layout.setSpacing(10)
         
         # Summary metrics display
-        self.summary_label = QLabel("Kết quả xử lý sẽ hiển thị ở đây")
+        self.summary_label = QLabel("Processing results will be displayed here")
         self.summary_label.setWordWrap(True)
         self.summary_label.setStyleSheet("""
             background-color: #1e1e1e; 
@@ -782,7 +793,7 @@ class OCRPipelineGUI(QMainWindow):
         # Enhanced comparison table
         self.comparison_table = QTableWidget()
         self.comparison_table.setColumnCount(3)
-        self.comparison_table.setHorizontalHeaderLabels(["Chỉ Số", "SVTR v6", "PaddleOCR"])
+        self.comparison_table.setHorizontalHeaderLabels(["Metrics", "SVTR v6", "PaddleOCR"])
         self.comparison_table.setAlternatingRowColors(True)
         self.comparison_table.verticalHeader().setVisible(False)
         self.comparison_table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -797,7 +808,7 @@ class OCRPipelineGUI(QMainWindow):
         layout.setSpacing(10)
         
         # Performance overview
-        self.performance_overview_label = QLabel("Tổng quan hiệu suất sẽ hiển thị ở đây")
+        self.performance_overview_label = QLabel("Performance overview will be displayed here")
         self.performance_overview_label.setWordWrap(True)
         self.performance_overview_label.setStyleSheet("""
             background-color: #1e1e1e; 
@@ -813,7 +824,7 @@ class OCRPipelineGUI(QMainWindow):
         self.performance_table = QTableWidget()
         self.performance_table.setColumnCount(4)
         self.performance_table.setHorizontalHeaderLabels([
-            "Thông Số", "SVTR v6", "PaddleOCR", "Đánh Giá"
+            "Metrics", "SVTR v6", "PaddleOCR", "Evaluation"
         ])
         self.performance_table.setAlternatingRowColors(True)
         self.performance_table.verticalHeader().setVisible(False)
@@ -821,7 +832,7 @@ class OCRPipelineGUI(QMainWindow):
         layout.addWidget(self.performance_table)
         
         # Model architecture comparison
-        self.architecture_label = QLabel("So sánh kiến trúc mô hình sẽ hiển thị ở đây")
+        self.architecture_label = QLabel("Model architecture comparison will be displayed here")
         self.architecture_label.setWordWrap(True)
         self.architecture_label.setStyleSheet("""
             background-color: #2a2a2a; 
@@ -842,7 +853,7 @@ class OCRPipelineGUI(QMainWindow):
         layout.setSpacing(10)
         
         # Model info header
-        model_info_label = QLabel(f"Kết Quả Nhận Dạng {model_name}")
+        model_info_label = QLabel(f"Recognition Results {model_name}")
         model_info_label.setStyleSheet("""
             background-color: #4CAF50; 
             color: white; 
@@ -856,7 +867,7 @@ class OCRPipelineGUI(QMainWindow):
         # Enhanced results table
         table = QTableWidget()
         table.setColumnCount(4)
-        table.setHorizontalHeaderLabels(["Văn Bản Nhận Dạng", "Độ Tin Cậy", "Tọa Độ", "Đánh Giá"])
+        table.setHorizontalHeaderLabels(["ID", "Text", "Conf", "Evaluate"])
         table.setAlternatingRowColors(True)
         table.verticalHeader().setVisible(False)
         table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -883,14 +894,14 @@ class OCRPipelineGUI(QMainWindow):
         footer_layout.addWidget(self.progress_bar)
         
         # Status label
-        self.status_label = QLabel("Sẵn sàng xử lý ảnh")
+        self.status_label = QLabel("Ready to process image")
         self.status_label.setStyleSheet("color: #4CAF50; font-weight: bold;")
         footer_layout.addWidget(self.status_label)
         
         footer_layout.addStretch()
         
         # Log toggle button
-        self.log_toggle_btn = QPushButton("📋 Hiện Logs")
+        self.log_toggle_btn = QPushButton("📋 Logs")
         self.log_toggle_btn.setFixedSize(120, 25)
         self.log_toggle_btn.clicked.connect(self.toggle_logs)
         footer_layout.addWidget(self.log_toggle_btn)
@@ -904,22 +915,22 @@ class OCRPipelineGUI(QMainWindow):
         
         if self.log_widget.isVisible():
             self.log_widget.hide()
-            self.log_toggle_btn.setText("📋 Hiện Logs")
+            self.log_toggle_btn.setText("📋 Show Logs")
         else:
             self.log_widget.show()
-            self.log_toggle_btn.setText("📋 Ẩn Logs")
+            self.log_toggle_btn.setText("📋 Hide Logs")
     
     def create_log_widget(self):
         """Create log widget as popup"""
         self.log_widget = QWidget()
-        self.log_widget.setWindowTitle("Nhật Ký Xử Lý")
+        self.log_widget.setWindowTitle("Processing log")
         self.log_widget.setGeometry(200, 200, 800, 300)
         self.log_widget.setStyleSheet(self.get_modern_stylesheet())
         
         layout = QVBoxLayout(self.log_widget)
         
         self.log_text = QTextEdit()
-        self.log_text.setPlaceholderText("Nhật ký xử lý sẽ hiển thị ở đây...")
+        self.log_text.setPlaceholderText("Processing log will be displayed here")
         layout.addWidget(self.log_text)
     
     def create_control_panel(self) -> QWidget:
@@ -1023,7 +1034,7 @@ class OCRPipelineGUI(QMainWindow):
         layout = QVBoxLayout(widget)
         
         # Summary stats
-        self.summary_label = QLabel("Kết quả xử lý sẽ được hiển thị tại đây")
+        self.summary_label = QLabel("Processing results will be displayed here")
         self.summary_label.setWordWrap(True)
         self.summary_label.setStyleSheet("""
             QLabel {
@@ -1040,7 +1051,7 @@ class OCRPipelineGUI(QMainWindow):
         # Comparison table
         self.comparison_table = QTableWidget()
         self.comparison_table.setColumnCount(3)
-        self.comparison_table.setHorizontalHeaderLabels(["📊 Chỉ Số", "🤖 SVTR v6", "🧠 PaddleOCR"])
+        self.comparison_table.setHorizontalHeaderLabels(["📊 Metrics", "🤖 SVTR v6", "🧠 PaddleOCR"])
         layout.addWidget(self.comparison_table)
         
         return widget
@@ -1053,7 +1064,7 @@ class OCRPipelineGUI(QMainWindow):
         # Create table for this model
         table = QTableWidget()
         table.setColumnCount(5)
-        table.setHorizontalHeaderLabels(["STT", "📝 Văn Bản", "📊 Độ Tin Cậy", "📍 Tọa Độ", "🎯 Đánh Giá"])
+        table.setHorizontalHeaderLabels(["ID", "📝 Text", "📊 Conf", "📍 Coords", "🎯 Evaluation"])
         
         # Store reference
         if model_name == "SVTR v6":
@@ -1130,9 +1141,9 @@ class OCRPipelineGUI(QMainWindow):
 
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            "Chọn Ảnh Để Xử Lý OCR",
+            "Select imag to process",
             str(image_test_dir),  # trỏ đến image_test cùng cấp src
-            "Tệp Ảnh (*.jpg *.jpeg *.png *.bmp);;Tất Cả Tệp (*)"
+            "Tệp Ảnh (*.jpg *.jpeg *.png *.bmp);;All files (*)"
         )
         
         if file_path:
@@ -1143,7 +1154,7 @@ class OCRPipelineGUI(QMainWindow):
             
             # Display original image
             self.display_image(file_path, self.original_image_label, max_size=600)
-            self.log(f"📁 Đã tải ảnh: {filename}")
+            self.log(f"📁 Image uploaded: {filename}")
             
             # Switch to original tab
             self.image_tabs.setCurrentIndex(0)
@@ -1174,7 +1185,7 @@ class OCRPipelineGUI(QMainWindow):
             """)
             
         except Exception as e:
-            label.setText(f"❌ Lỗi hiển thị ảnh: {e}")
+            label.setText(f"❌ Image display erro: {e}")
             label.setStyleSheet("""
                 border: 2px solid #f44336; 
                 background-color: #333333;
@@ -1185,7 +1196,7 @@ class OCRPipelineGUI(QMainWindow):
     def process_image(self):
         """Start image processing"""
         if not hasattr(self, 'current_image_path'):
-            QMessageBox.warning(self, "Cảnh báo", "Vui lòng chọn ảnh trước")
+            QMessageBox.warning(self, "Warning", "Please select an image first")
             return
         
         # Disable UI during processing
@@ -1194,7 +1205,7 @@ class OCRPipelineGUI(QMainWindow):
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)  # Indeterminate progress
         
-        self.log("🚀 Bắt đầu pipeline OCR...")
+        self.log("🚀 Start pipeline OCR...")
         
         # Create and start processing thread
         self.processing_thread = OCRProcessingThread(
@@ -1246,36 +1257,36 @@ class OCRPipelineGUI(QMainWindow):
                 crop_area = 0
             
             stats_text = f"""
-🎯 <b>KẾT QUẢ PHÁT HIỆN YOLO</b><br>
+🎯 <b>YOLO DETECTION RESULTS</b><br>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━<br>
 <br>
-📊 <b>THỐNG KÊ PHÁT HIỆN:</b><br>
-   • Tổng số hóa đơn phát hiện: <span style="color: #4CAF50;"><b>{total_detections}</b></span><br>
-   • Độ tin cậy trung bình: <span style="color: #2196F3;"><b>{avg_confidence:.3f}</b></span><br>
-   • Phát hiện độ tin cậy cao (>0.8): <span style="color: #FF9800;"><b>{high_conf_count}/{total_detections}</b></span><br>
+📊 <b>DETECTION STATISTICS:</b><br>
+   • Total detected receipts: <span style="color: #4CAF50;"><b>{total_detections}</b></span><br>
+   • Average confidence: <span style="color: #2196F3;"><b>{avg_confidence:.3f}</b></span><br>
+   • High-confidence detection (>0.8): <span style="color: #FF9800;"><b>{high_conf_count}/{total_detections}</b></span><br>
 <br>
-🏆 <b>PHÁT HIỆN TỐT NHẤT:</b><br>
-   • Độ tin cậy: <span style="color: #4CAF50;"><b>{best_detection.get('confidence', 0):.3f}</b></span><br>
-   • Tọa độ góc trên-trái: <span style="color: #9C27B0;">({int(best_detection.get('x1', 0))}, {int(best_detection.get('y1', 0))})</span><br>
-   • Tọa độ góc dưới-phải: <span style="color: #9C27B0;">({int(best_detection.get('x2', 0))}, {int(best_detection.get('y2', 0))})</span><br>
-   • Kích thước vùng: <span style="color: #FF5722;">{int(best_detection.get('x2', 0)) - int(best_detection.get('x1', 0))} × {int(best_detection.get('y2', 0)) - int(best_detection.get('y1', 0))} pixels</span><br>
+🏆 <b>BEST DETECTION:</b><br>
+   • Confidence: <span style="color: #4CAF50;"><b>{best_detection.get('confidence', 0):.3f}</b></span><br>
+   • Top-left coordinates: <span style="color: #9C27B0;">({int(best_detection.get('x1', 0))}, {int(best_detection.get('y1', 0))})</span><br>
+   • Bottom-right coordinates: <span style="color: #9C27B0;">({int(best_detection.get('x2', 0))}, {int(best_detection.get('y2', 0))})</span><br>
+   • Region size”: <span style="color: #FF5722;">{int(best_detection.get('x2', 0)) - int(best_detection.get('x1', 0))} × {int(best_detection.get('y2', 0)) - int(best_detection.get('y1', 0))} pixels</span><br>
 <br>
-✂️ <b>THÔNG TIN VÙNG CẮT:</b><br>
-   • Kích thước sau cắt: <span style="color: #607D8B;"><b>{crop_shape[1]} × {crop_shape[0]} pixels</b></span><br>
-   • Số kênh màu: <span style="color: #795548;">{crop_shape[2] if len(crop_shape) > 2 else 'N/A'}</span><br>
-   • Diện tích vùng cắt: <span style="color: #3F51B5;"><b>{crop_area:,} pixels²</b></span><br>
-   • Tỷ lệ khung hình: <span style="color: #009688;"><b>{crop_shape[1]/crop_shape[0]:.2f}</b></span><br>
+✂️ <b>CROPPED REGION INFORMATION:</b><br>
+   • Cropped size: <span style="color: #607D8B;"><b>{crop_shape[1]} × {crop_shape[0]} pixels</b></span><br>
+   • Color channels: <span style="color: #795548;">{crop_shape[2] if len(crop_shape) > 2 else 'N/A'}</span><br>
+   • Cropped area: <span style="color: #3F51B5;"><b>{crop_area:,} pixels²</b></span><br>
+   • Aspect ratio: <span style="color: #009688;"><b>{crop_shape[1]/crop_shape[0]:.2f}</b></span><br>
 <br>
-⚙️ <b>THÔNG SỐ XỬ LÝ:</b><br>
-   • Padding áp dụng: <span style="color: #FFC107;">10 pixels</span><br>
-   • Ngưỡng tin cậy tối thiểu: <span style="color: #E91E63;">0.1</span><br>
-   • Phương pháp: <span style="color: #00BCD4;">YOLOv8 Detection</span><br>
+⚙️ <b>Processing Parameters:</b><br>
+   • Applied padding: <span style="color: #FFC107;">10 pixels</span><br>
+   • Minimum confidence threshold: <span style="color: #E91E63;">0.1</span><br>
+   • Strategy: <span style="color: #00BCD4;">YOLOv8 Detection</span><br>
             """
             
             self.detection_stats_label.setText(stats_text.strip())
             
         except Exception as e:
-            self.log(f"❌ Lỗi hiển thị kết quả YOLO: {e}")
+            self.log(f"❌ YOLO results display error: {e}")
     
     def display_image_array(self, image_array: np.ndarray, label: QLabel, max_size: int = 600):
         """Display numpy image array in label with enhanced styling"""
@@ -1333,7 +1344,7 @@ class OCRPipelineGUI(QMainWindow):
             text = text_info.get('text', '')
             text_item = QTableWidgetItem(text)
             text_item.setFont(QFont("Arial", 10, QFont.Bold))
-            text_item.setToolTip(f"Văn bản đầy đủ: {text}")
+            text_item.setToolTip(f"Full text: {text}")
             table.setItem(i, 1, text_item)
             
             # Độ tin cậy (Confidence) with enhanced color coding
@@ -1368,35 +1379,35 @@ class OCRPipelineGUI(QMainWindow):
             if bbox and len(bbox) >= 4:
                 coord_str = f"({bbox[0]},{bbox[1]}) → ({bbox[2]},{bbox[3]})"
             elif coords and len(coords) > 0:
-                coord_str = f"[{len(coords)} điểm]"
+                coord_str = f"[{len(coords)} points]"
             else:
-                coord_str = "Không có"
+                coord_str = "None"
             
             coord_item = QTableWidgetItem(coord_str)
             coord_item.setFont(QFont("Consolas", 9))
             coord_item.setTextAlignment(Qt.AlignCenter)
             coord_item.setForeground(QColor(150, 150, 150))
-            coord_item.setToolTip("Tọa độ góc trên trái → góc dưới phải")
+            coord_item.setToolTip("Top-left → Bottom-right coordinates")
             table.setItem(i, 3, coord_item)
             
             # Đánh giá (Assessment) based on confidence
             if confidence > 0.95:
-                assessment = "🌟 Xuất sắc"
+                assessment = "🌟 Excellent"
                 assessment_color = QColor(76, 175, 80, 100)
             elif confidence > 0.9:
-                assessment = "✅ Rất tốt"
+                assessment = "✅ Very Good"
                 assessment_color = QColor(139, 195, 74, 100)
             elif confidence > 0.8:
-                assessment = "👍 Tốt"
+                assessment = "👍 Good"
                 assessment_color = QColor(255, 235, 59, 100)
             elif confidence > 0.7:
-                assessment = "⚠️ Khá"
+                assessment = "⚠️ Great"
                 assessment_color = QColor(255, 152, 0, 100)
             elif confidence > 0.5:
-                assessment = "📝 Trung bình"
+                assessment = "📝 Average"
                 assessment_color = QColor(255, 152, 0, 150)
             else:
-                assessment = "❌ Cần xem lại"
+                assessment = "❌ Needs Improvement"
                 assessment_color = QColor(244, 67, 54, 100)
             
             assessment_item = QTableWidgetItem(assessment)
@@ -1440,37 +1451,17 @@ class OCRPipelineGUI(QMainWindow):
         paddle_stats = comparison.get('paddle_stats', {})
         
         metrics = [
-            ("📊 Tổng Số Văn Bản", "total_texts"),
-            ("📈 Độ Tin Cậy Trung Bình", "avg_confidence"),
-            ("🏆 Độ Tin Cậy Cao Nhất", "max_confidence"),
-            ("📉 Độ Tin Cậy Thấp Nhất", "min_confidence"),
-            ("⭐ Độ Tin Cậy Cao (>0.9)", "high_confidence_count"),
-            ("� Độ Tin Cậy Rất Cao (>0.95)", "very_high_confidence_count"),
-            ("✅ Độ Tin Cậy Tốt (>0.8)", "good_confidence_count"),
-            ("⚠️ Độ Tin Cậy Thấp (<0.5)", "low_confidence_count"),
-            ("📊 Độ Lệch Chuẩn", "confidence_std"),
-            ("🔢 Độ Tin Cậy Trung Vị", "confidence_median")
+            ("📊 Total Texts", "total_texts"),
+            ("📈 Average Confidence", "avg_confidence"),
+            ("🏆 Highest Confidence", "max_confidence"),
+            ("📉 Lowest Confidence", "min_confidence"),
+            ("⭐ High Confidence (>0.9)", "high_confidence_count"),
+            ("� Very High Confidence (>0.95)", "very_high_confidence_count"),
+            ("✅ Good Confidence (>0.8)", "good_confidence_count"),
+            ("⚠️ Low Confidence (<0.5)", "low_confidence_count"),
+            ("📊 Confidence Standard Deviation", "confidence_std"),
+            ("🔢 Median Confidence", "confidence_median")
         ]
-        
-        # Calculate additional statistics
-        svtr_confidences = [t.get('confidence', 0) for t in comparison.get('svtr_texts', [])]
-        paddle_confidences = [t.get('confidence', 0) for t in comparison.get('paddle_texts', [])]
-        
-        # Add calculated metrics
-        if svtr_confidences:
-            svtr_stats['very_high_confidence_count'] = sum(1 for c in svtr_confidences if c > 0.95)
-            svtr_stats['good_confidence_count'] = sum(1 for c in svtr_confidences if c > 0.8)
-            svtr_stats['low_confidence_count'] = sum(1 for c in svtr_confidences if c < 0.5)
-            svtr_stats['confidence_std'] = np.std(svtr_confidences)
-            svtr_stats['confidence_median'] = np.median(svtr_confidences)
-        
-        if paddle_confidences:
-            paddle_stats['very_high_confidence_count'] = sum(1 for c in paddle_confidences if c > 0.95)
-            paddle_stats['good_confidence_count'] = sum(1 for c in paddle_confidences if c > 0.8)
-            paddle_stats['low_confidence_count'] = sum(1 for c in paddle_confidences if c < 0.5)
-            paddle_stats['confidence_std'] = np.std(paddle_confidences)
-            paddle_stats['confidence_median'] = np.median(paddle_confidences)
-        
         self.comparison_table.setRowCount(len(metrics))
         
         for i, (metric_name, metric_key) in enumerate(metrics):
@@ -1526,7 +1517,7 @@ class OCRPipelineGUI(QMainWindow):
         yolo = results.get('yolo_detection', {})
         svtr = results.get('svtr_results', {})
         paddle = results.get('paddle_results', {})
-        
+        best_detection = yolo.get('best_detection', {})
         # Calculate processing stats
         svtr_texts = svtr.get('total_texts', 0)
         paddle_texts = paddle.get('total_texts', 0)
@@ -1544,23 +1535,23 @@ class OCRPipelineGUI(QMainWindow):
         
         summary_text = f"""
 <div style="font-family: Arial; line-height: 1.6;">
-<h3 style="color: #4CAF50; margin-bottom: 15px;">🎯 Tóm Tắt Kết Quả Xử Lý</h3>
+<h3 style="color: #4CAF50; margin-bottom: 15px;">🎯 Processing Results Summary</h3>
 <hr style="border: 1px solid #555; margin: 10px 0;">
 
-<p><strong>📁 Ảnh Đầu Vào:</strong> <span style="color: #81C784;">{Path(results['input_image']).name}</span></p>
+<p><strong>📁 Input Image:</strong> <span style="color: #81C784;">{Path(results['input_image']).name}</span></p>
 
-<h4 style="color: #2196F3; margin: 15px 0 10px 0;">🎯 Kết Quả Phát Hiện YOLO</h4>
-<p>• Số hóa đơn phát hiện: <strong>{len(yolo.get('detections', []))}</strong></p>
-<p>• Độ tin cậy tốt nhất: <strong>{yolo.get('best_detection', {}).get('confidence', 0):.3f}</strong></p>
-<p>• Kích thước vùng cắt: <strong>{yolo.get('crop_dimensions', 'Không có')}</strong></p>
+<h4 style="color: #2196F3; margin: 15px 0 10px 0;">🎯 YOLO Detection Results</h4>
+<p>• Number of detected receipts: <strong>{len(yolo.get('detections', []))}</strong></p>
+<p>• Best confidence: <strong>{yolo.get('best_detection', {}).get('confidence', 0):.3f}</strong></p>
+<p>• Region size”: <span style="color: #FF5722;">{int(best_detection.get('x2', 0)) - int(best_detection.get('x1', 0))} × {int(best_detection.get('y2', 0)) - int(best_detection.get('y1', 0))} pixels</span><br>
 
-<h4 style="color: #FF9800; margin: 15px 0 10px 0;">📊 Kết Quả Nhận Dạng Văn Bản</h4>
+<h4 style="color: #FF9800; margin: 15px 0 10px 0;">📊 Text Recognition Results</h4>
 <table style="width: 100%; border-collapse: collapse;">
 <tr style="background-color: #444;">
-    <th style="padding: 8px; text-align: left; border: 1px solid #666;">Mô Hình</th>
-    <th style="padding: 8px; text-align: center; border: 1px solid #666;">Số Văn Bản</th>
-    <th style="padding: 8px; text-align: center; border: 1px solid #666;">ĐTC Trung Bình</th>
-    <th style="padding: 8px; text-align: center; border: 1px solid #666;">Cao (>0.9)</th>
+    <th style="padding: 8px; text-align: left; border: 1px solid #666;">Model</th>
+    <th style="padding: 8px; text-align: center; border: 1px solid #666;">Number of Texts</th>
+    <th style="padding: 8px; text-align: center; border: 1px solid #666;">Average Confidence</th>
+    <th style="padding: 8px; text-align: center; border: 1px solid #666;">High (>0.9)</th>
 </tr>
 <tr>
     <td style="padding: 8px; border: 1px solid #666;">🤖 SVTR v6</td>
@@ -1576,15 +1567,15 @@ class OCRPipelineGUI(QMainWindow):
 </tr>
 </table>
 
-<p style="margin-top: 15px;"><strong>🏆 Mô Hình Tốt Hơn:</strong> 
+<p style="margin-top: 15px;"><strong>🏆 Better Model:</strong> 
 <span style="color: {better_color}; font-weight: bold;">{better_model}</span></p>
 
-<p style="margin-top: 10px; color: #888; font-size: 12px;">⏱️ Thời gian xử lý: {results.get('timestamp', 'Không có')[:19]}</p>
+<p style="margin-top: 10px; color: #888; font-size: 12px;">⏱️ Processing time: {results.get('timestamp', 'Not available')[:19]}</p>
 
-<h4 style="color: #9C27B0; margin: 15px 0 10px 0;">📈 Thống Kê Chi Tiết</h4>
-<p>• Tổng thời gian xử lý: <strong>{results.get('total_processing_time', 'Không có')}</strong></p>
-<p>• Số văn bản độ tin cậy rất cao (>0.95): <strong>SVTR: {sum(1 for t in svtr.get('texts', []) if t.get('confidence', 0) > 0.95)} | PaddleOCR: {sum(1 for t in paddle.get('texts', []) if t.get('confidence', 0) > 0.95)}</strong></p>
-<p>• Tỷ lệ văn bản chất lượng cao: <strong>SVTR: {(svtr_high_conf/svtr_texts*100 if svtr_texts > 0 else 0):.1f}% | PaddleOCR: {(paddle_high_conf/paddle_texts*100 if paddle_texts > 0 else 0):.1f}%</strong></p>
+<h4 style="color: #9C27B0; margin: 15px 0 10px 0;">📈 Detailed Statistics</h4>
+<p>• Total Processing Time: <strong>{results.get('total_processing_time', 'Not available')}</strong></p>
+<p>• Number of very high confidence texts (>0.95): <strong>SVTR: {sum(1 for t in svtr.get('texts', []) if t.get('confidence', 0) > 0.95)} | PaddleOCR: {sum(1 for t in paddle.get('texts', []) if t.get('confidence', 0) > 0.95)}</strong></p>
+<p>• High-quality text rate: <strong>SVTR: {(svtr_high_conf/svtr_texts*100 if svtr_texts > 0 else 0):.1f}% | PaddleOCR: {(paddle_high_conf/paddle_texts*100 if paddle_texts > 0 else 0):.1f}%</strong></p>
 </div>
         """
         
@@ -1605,18 +1596,18 @@ class OCRPipelineGUI(QMainWindow):
     def save_results(self):
         """Save current results with Vietnamese interface"""
         if not self.current_results:
-            QMessageBox.warning(self, "Cảnh báo", "Không có kết quả để lưu")
+            QMessageBox.warning(self, "Warning", "No results to save")
             return
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         base_name = Path(self.current_results['input_image']).stem
-        filename = f"ket_qua_ocr_{base_name}_{timestamp}.json"
+        filename = f"OCR_Result_{base_name}_{timestamp}.json"
         
         file_path, _ = QFileDialog.getSaveFileName(
             self,
-            "Lưu Kết Quả OCR",
+            "Save OCR Results",
             filename,
-            "Tệp JSON (*.json);;Tất Cả Tệp (*)"
+            "JSON Files (*.json);;All Files (*)"
         )
         
         if file_path:
@@ -1624,13 +1615,13 @@ class OCRPipelineGUI(QMainWindow):
                 with open(file_path, 'w', encoding='utf-8') as f:
                     json.dump(self.current_results, f, indent=2, ensure_ascii=False, default=str)
                 
-                self.log(f"💾 Đã lưu kết quả vào: {Path(file_path).name}")
-                QMessageBox.information(self, "Thành công", f"Kết quả đã được lưu vào:\n{file_path}")
+                self.log(f"💾 Results have been saved to: {Path(file_path).name}")
+                QMessageBox.information(self, "Success", f"Results have been saved to:\n{file_path}")
                 
             except Exception as e:
-                error_msg = f"Lỗi khi lưu kết quả: {e}"
+                error_msg = f"Error saving results: {e}"
                 self.log(f"❌ {error_msg}")
-                QMessageBox.critical(self, "Lỗi Lưu Dữ Liệu", error_msg)
+                QMessageBox.critical(self, "Save Error", error_msg)
 
 
 def main():
