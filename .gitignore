@@ -145,7 +145,7 @@ env.bak/
 venv.bak/
 .py3.10venv
 py3.10venv/
-.cache
+cache/
 
 # Spyder project settings
 .spyderproject

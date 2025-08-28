@@ -29,16 +29,12 @@ class BillOCRConfig:
     
     # Processing
     image_test_dir: Path = base_dir / "image_test"
-    results_dir: Path = base_dir / "ocr_pipeline_results"
     
     # Output settings
     save_images: bool = True
     save_crops: bool = True
     save_comparison: bool = True
     
-    def __post_init__(self):
-        """Ensure results directory exists"""
-        self.results_dir.mkdir(exist_ok=True)
 
 # Default configuration instance
 default_config = BillOCRConfig()

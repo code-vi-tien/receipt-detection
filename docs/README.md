@@ -80,20 +80,25 @@ The GUI (implemented in Vietnamese) uses a modern dark theme and provides real�
 
 ### 1) Environment Setup
 ```bash
-python -m venv venv
-# Activate your virtual environment:
-# Linux/macOS: source venv/bin/activate
-# Windows: venv\Scripts\activate
+python 3.10 -m venv venv
 pip install -r requirements.txt
-python test_setup.py
 ```
+
+## 🖥 System Requirements
+
+- **Python:** 3.10 (tested and recommended)
+- **Operating System:** Windows 10/11 (64-bit)
+- **GPU (optional):** NVIDIA GPU with CUDA/cuDNN for acceleration (otherwise runs on CPU)
+- **RAM:** ≥ 8GB recommended for smooth processing
 
 ### 2) Run the App
 ```bash
-python gui.py       # Launch the GUI
+python run.py gui
+python run.py benchmark_ocr
+python run.py check_model
 ```
 
-> After installing the requirements, simply run **gui.py** to start the application.
+> After installing the requirements, simply run **python run.py [benchmark_ocr | check_model | gui]** to start the application.
 
 ---
 
@@ -136,11 +141,15 @@ graph TD
 ## 📁 Project Structure
 ```
 receipt-detection/
-├── gui.py                     # Main GUI application
 ├── test_setup.py              # Environment and dependency check
 ├── requirements.txt           # Dependencies list
 ├── image_test/                # Sample images for testing
 ├── gui_result/                # Folder for exported JSON results (auto-created)
+├── benchmark_ocr_result/      # Folder for exported JSON results (auto-created)
+├── src/
+│  ├── gui.py
+│  ├── benchmark_ocr.py
+│  └── check_model.py
 ├── yolo_detect_bill/          # YOLO detection module and models
 │   └── bill_models.pt         # YOLO model file (used via subfolder path)
 ├── svtr_v6_ocr/               # SVTR v6 OCR module and models

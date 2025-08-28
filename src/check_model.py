@@ -35,7 +35,7 @@ def check_model_directory(directory: Path, expected_files=None) -> bool:
     return True
 
 def main():
-    current_dir = Path(__file__).parent
+    current_dir = Path(__file__).parent.parent
     paddle_dir = current_dir / "paddle_ocr"
     svtr_dir = current_dir / "svtr_v6_ocr"
 

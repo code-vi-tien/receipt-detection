@@ -12,9 +12,8 @@ import os
 from statistics import mean, stdev
 
 # Add paths
-sys.path.append(str(Path(__file__).parent / "yolo_detect_bill"))
-sys.path.append(str(Path(__file__).parent / "svtr_v6_ocr"))
-
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 from yolo_detect_bill.bill_detector import BillDetector
 from svtr_v6_ocr.svtr_v6_ocr import SVTRv6TrueInference
 import cv2
@@ -24,7 +23,7 @@ class OCRBenchmark:
     
     def __init__(self):
         # Initialize YOLO
-        yolo_model_path = os.path.join(os.path.dirname(__file__), "yolo_detect_bill", "bill_models.pt")
+        yolo_model_path = Path(__file__).parent.parent / "yolo_detect_bill" / "bill_models.pt"
         self.yolo_detector = BillDetector(model_path=str(yolo_model_path))
         self.yolo_detector.load_model()
         
@@ -33,10 +32,10 @@ class OCRBenchmark:
         
         # Initialize PaddleOCR
         from paddleocr import PaddleOCR
-        det_model_path = 'paddle_ocr'
+        det_model_path = str("..\paddle_ocr\ch_db_rest18")
         
         self.paddle_engine = PaddleOCR(
-            det_model_dir=det_model_path,
+            det_model_dir=str(det_model_path),
             rec=True,
             use_angle_cls=False,
             use_gpu=False,

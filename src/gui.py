@@ -35,8 +35,10 @@ except ImportError as e:
     HAS_PYSIDE6 = False
 
 # Import our modules - direct imports
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
 try:
-    sys.path.insert(0, str(Path(__file__).parent))
     from yolo_detect_bill.bill_detector import BillDetector
     from svtr_v6_ocr.svtr_v6_ocr import SVTRv6TrueInference
 except ImportError as e:
@@ -326,7 +328,7 @@ class OCRProcessingThread(QThread):
         filename = f"ocr_pipeline_results_{base_name}_{timestamp}.json"
         
         # Tạo folder gui_result nếu chưa có
-        results_folder = os.path.join(os.path.dirname(__file__), "gui_result")
+        results_folder = Path(__file__).parent.parent / "gui_result"
         if not os.path.exists(results_folder):
             os.makedirs(results_folder)
             
@@ -1068,7 +1070,7 @@ class OCRPipelineGUI(QMainWindow):
         
         try:
             # Initialize YOLO detector
-            yolo_model_path = Path(__file__).parent / "yolo_detect_bill" / "bill_models.pt"
+            yolo_model_path = Path(__file__).parent.parent / "yolo_detect_bill" / "bill_models.pt"
             self.yolo_detector = BillDetector(model_path=str(yolo_model_path))
             if self.yolo_detector.load_model():
                 self.log("✅ YOLO detector loaded")
@@ -1123,10 +1125,13 @@ class OCRPipelineGUI(QMainWindow):
     
     def select_image(self):
         """Select image file"""
+        image_test_dir = Path(__file__).parent.parent / "image_test"
+        print("DEBUG >> Default image_test folder:", image_test_dir)
+
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Chọn Ảnh Để Xử Lý OCR",
-            str(Path(__file__).parent / "image_test"),
+            str(image_test_dir),  # trỏ đến image_test cùng cấp src
             "Tệp Ảnh (*.jpg *.jpeg *.png *.bmp);;Tất Cả Tệp (*)"
         )
         

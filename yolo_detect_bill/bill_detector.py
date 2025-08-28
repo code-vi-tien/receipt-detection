@@ -14,7 +14,7 @@ except ImportError:
     print("Warning: ultralytics not found. YOLO detection disabled.")
     HAS_YOLO = False
 
-from config import BillOCRConfig
+from src.config import BillOCRConfig
 
 
 class BillDetector:
@@ -22,7 +22,7 @@ class BillDetector:
     
     def __init__(self, config: BillOCRConfig = None, model_path: str = None):
         if config is None:
-            from config import default_config
+            from src.config import default_config
             config = default_config
             
         self.config = config
