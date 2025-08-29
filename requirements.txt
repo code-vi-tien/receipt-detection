@@ -26,3 +26,4 @@ pathlib2>=2.3.0
 
 # Draw plot
 matplotlib>=3.5.0
+numpy==1.26.4
