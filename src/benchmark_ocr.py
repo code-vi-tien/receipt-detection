@@ -35,13 +35,11 @@ class OCRBenchmark:
             det_model_dir=det_model_path,
             rec_model_dir=rec_model_path,
             use_angle_cls=False,
-            use_gpu=False,
             lang='en'
         )
 
         self.baseline_engine = PaddleOCR(
             use_angle_cls=False,
-            use_gpu=False,
             lang='en',
             show_log=False
         )
@@ -140,7 +138,6 @@ class OCRBenchmark:
         
         custom_results = []
         baseline_results = []
-        processing_times = []
         
         for i, image_path in enumerate(test_images, 1):
             print(f"\n🔄 Processing {i}/{len(test_images)}: {image_path.name}")
@@ -159,12 +156,12 @@ class OCRBenchmark:
 
                 print("   🔧 Processing with Custom DBNet+SVTR...")
                 start_time = time.time()
-                custom_result = self.process_with_paddle_ocr(bill_crop, "custom")
+                custom_result = self.process_image(bill_crop, "custom")
                 custom_time = time.time() - start_time
 
                 print("   🔧 Processing with Baseline PaddleOCR...")
                 start_time = time.time()
-                baseline_result = self.process_with_paddle_ocr(bill_crop, "baseline")
+                baseline_result = self.process_image(bill_crop, "baseline")
                 baseline_time = time.time() - start_time
                 
                 
@@ -209,84 +206,84 @@ class OCRBenchmark:
         """Generate benchmark report"""
         print(f"\n📊 BENCHMARK REPORT")
         print("=" * 60)
-        
+
         if not custom_results or not baseline_results:
             print("❌ No results to analyze!")
             return
-        
+
         # Processing time analysis
         custom_times = [r['processing_time'] for r in custom_results]
         baseline_times = [r['processing_time'] for r in baseline_results]
-        
+
         print(f"⏱️  PROCESSING TIME ANALYSIS:")
         print(f"   Custom DBNet+SVTR: avg={mean(custom_times):.3f}s, std={stdev(custom_times) if len(custom_times) > 1 else 0:.3f}s")
         print(f"   Baseline PaddleOCR: avg={mean(baseline_times):.3f}s, std={stdev(baseline_times) if len(baseline_times) > 1 else 0:.3f}s")
-        
+
         speed_ratio = mean(baseline_times) / mean(custom_times) if mean(custom_times) > 0 else 0
         faster_model = "Custom" if speed_ratio > 1 else "Baseline"
         print(f"   Speed ratio: {abs(speed_ratio):.2f}x ({faster_model} faster)")
-        
+
         # Text detection analysis
         custom_counts = [r['text_count'] for r in custom_results]
         baseline_counts = [r['text_count'] for r in baseline_results]
-        
+
         print(f"\n📝 TEXT DETECTION ANALYSIS:")
         print(f"   Custom DBNet+SVTR: avg={mean(custom_counts):.1f}, std={stdev(custom_counts) if len(custom_counts) > 1 else 0:.1f}")
         print(f"   Baseline PaddleOCR: avg={mean(baseline_counts):.1f}, std={stdev(baseline_counts) if len(baseline_counts) > 1 else 0:.1f}")
-        
+
         # Confidence analysis
         custom_confs = [r['avg_confidence'] for r in custom_results if r['avg_confidence'] > 0]
         baseline_confs = [r['avg_confidence'] for r in baseline_results if r['avg_confidence'] > 0]
-        
+
         if custom_confs and baseline_confs:
             print(f"\n🎯 CONFIDENCE ANALYSIS:")
             print(f"   Custom DBNet+SVTR: {mean(custom_confs):.3f}")
             print(f"   Baseline PaddleOCR: {mean(baseline_confs):.3f}")
-        
+
         # High confidence analysis
         custom_high = sum(r['high_confidence_count'] for r in custom_results)
         custom_total = sum(r['text_count'] for r in custom_results)
         baseline_high = sum(r['high_confidence_count'] for r in baseline_results)
         baseline_total = sum(r['text_count'] for r in baseline_results)
-        
+
         print(f"\n🏆 HIGH CONFIDENCE (>0.9) ANALYSIS:")
         if custom_total > 0:
             print(f"   Custom DBNet+SVTR: {custom_high}/{custom_total} ({custom_high/custom_total*100:.1f}%)")
         if baseline_total > 0:
             print(f"   Baseline PaddleOCR: {baseline_high}/{baseline_total} ({baseline_high/baseline_total*100:.1f}%)")
-        
+
         # Individual image comparison
         print(f"\n🔍 INDIVIDUAL IMAGE ANALYSIS:")
         print("-" * 80)
         print(f"{'Image':<20} {'Custom(t/s/c)':<15} {'Baseline(t/s/c)':<15} {'Winner'}")
         print("-" * 80)
-        
+
         custom_wins = 0
         baseline_wins = 0
-        
+
         for i in range(min(len(custom_results), len(baseline_results))):
             custom = custom_results[i]
             baseline = baseline_results[i]
-            
+
             # Determine winner using composite score
             custom_score = (custom['text_count'] * custom['avg_confidence']) / custom['processing_time'] if custom['processing_time'] > 0 else 0
             baseline_score = (baseline['text_count'] * baseline['avg_confidence']) / baseline['processing_time'] if baseline['processing_time'] > 0 else 0
-            
+
             if custom_score > baseline_score:
                 winner = "Custom ⭐"
                 custom_wins += 1
             else:
                 winner = "Baseline ⭐"
                 baseline_wins += 1
-            
+
             custom_info = f"{custom['text_count']}/{custom['processing_time']:.2f}s/{custom['avg_confidence']:.2f}"
             baseline_info = f"{baseline['text_count']}/{baseline['processing_time']:.2f}s/{baseline['avg_confidence']:.2f}"
             print(f"{custom['image'][:18]:<20} {custom_info:<15} {baseline_info:<15} {winner}")
-        
+
         print("-" * 80)
         overall_winner = 'Custom DBNet+SVTR' if custom_wins > baseline_wins else 'Baseline PaddleOCR'
         print(f"🏆 OVERALL WINNER: {overall_winner} ({max(custom_wins, baseline_wins)}/{custom_wins + baseline_wins} images)")
-        
+
         # Save detailed results
         benchmark_data = {
             'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
@@ -304,17 +301,17 @@ class OCRBenchmark:
             'custom_results': custom_results,
             'baseline_results': baseline_results
         }
-        
+
         results_folder = os.path.join(os.path.dirname(__file__), "benchmark_ocr_result")
         if not os.path.exists(results_folder):
             os.makedirs(results_folder)
         results_file = os.path.join(results_folder, f"benchmark_results_{time.strftime('%Y%m%d_%H%M%S')}.json")
-        
+
         with open(results_file, 'w', encoding='utf-8') as f:
             json.dump(benchmark_data, f, indent=2, ensure_ascii=False, default=str)
-        
+
         print(f"\n💾 Detailed results saved to: {results_file}")
-        
+
         # Print sample detected texts
         print(f"\n📝 SAMPLE DETECTED TEXTS:")
         print("-" * 60)
@@ -323,13 +320,13 @@ class OCRBenchmark:
             print(f"  📄 {result['image']}:")
             for j, text_result in enumerate(result['results'][:3]):
                 print(f"    {j+1}. '{text_result['text']}' (conf: {text_result['confidence']:.3f})")
-        
+
         print("\n🔧 Baseline PaddleOCR Results:")
         for i, result in enumerate(baseline_results[:3]):
             print(f"  📄 {result['image']}:")
             for j, text_result in enumerate(result['results'][:3]):
                 print(f"    {j+1}. '{text_result['text']}' (conf: {text_result['confidence']:.3f})")
-        
+
         print("\n🎉 Benchmark completed successfully!")
 
 if __name__ == "__main__":
