@@ -1,6 +1,6 @@
 # 🔍 Comparison of Two Pipelines
 
-## 1) **SVTR v6 Pure Model**
+## 1) **OCR Model Pure Model**
 
 `python svtr_v6_true_inference.py`  
 👉 This inference script runs **only the SVTR v6 backbone + CTC head**. You manually load the `.pdparams` weights and decode.
