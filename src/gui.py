@@ -11,6 +11,7 @@ import json
 import cv2
 import numpy as np
 from pathlib import Path
+import time
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 import traceback
@@ -48,7 +49,8 @@ class PaddleOCREngine:
     """PaddleOCR wrapper for our pipeline"""
     
     def __init__(self):
-        self.ocr = None
+        self.ocr_engine = None
+        self.baseline_ocr = None
         self.initialized = False
     
     def initialize(self):
@@ -81,59 +83,89 @@ class PaddleOCREngine:
             print(f"❌ Failed to initialize PaddleOCR: {e}")
             return False
     
-    def predict(self, image_np: np.ndarray) -> List[Dict]:
+    def predict_ocr(self, image_np: np.ndarray) -> List[Dict]:
         """Predict text from image array"""
-        if not self.initialized:
-            if not self.initialize():
-                return []
+        if not self.initialized and not self.initialize():
+            return []
         
         try:
             # Convert numpy array to image path temporarily
-            temp_path = "temp_paddle_input.jpg"
+            temp_path = "temp_ocr_input.jpg"
             cv2.imwrite(temp_path, image_np)
             
-            result = self.ocr.ocr(temp_path, cls=False)
+            result = self.ocr_engine.ocr(temp_path, cls=False)
             
             # Clean up temp file
             if os.path.exists(temp_path):
                 os.remove(temp_path)
             
-            output_data = []
-            if result and len(result[0]) > 0:
-                for line in result[0]:
-                    coords = line[0]
-                    text_info = line[1]
-                    text = text_info[0]
-                    confidence = text_info[1]
-                    
-                    output_data.append({
-                        "text": text,
-                        "confidence": confidence,
-                        "coordinates": coords
-                    })
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
             
-            return output_data
+            return self._parse_result(result, "OCR Model")
             
         except Exception as e:
-            print(f"❌ PaddleOCR prediction failed: {e}")
+            print(f"❌ OCR Model prediction failed: {e}")
             return []
 
+    def predict_baseline(self, image_np: np.ndarray) -> List[Dict]:
+        """Predict text using baseline PaddleOCR"""
+        if not self.initialized:
+            if not self.initialize():
+                return []
+        
+        try:
+            # Save image temporarily
+            temp_path = "temp_baseline_input.jpg"
+            cv2.imwrite(temp_path, image_np)
+            
+            # Run baseline OCR
+            result = self.baseline_engine.ocr(temp_path, cls=False)
+            
+            # Clean up temp file
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            
+            return self._parse_result(result, "PaddleOCR")
+            
+        except Exception as e:
+            print(f"❌ Baseline OCR prediction failed: {e}")
+            return []
 
+    def _parse_result(self, result, model_name: str) -> List[Dict]:
+        """Parse PaddleOCR result into standardized format"""
+        output_data = []
+        
+        if result and len(result[0]) > 0:
+            for line in result[0]:
+                coords = line[0]  # Bounding box coordinates
+                text_info = line[1]  # (text, confidence)
+                text = text_info[0]
+                confidence = text_info[1]
+                
+                output_data.append({
+                    "text": text,
+                    "confidence": confidence,
+                    "coordinates": coords,
+                    "model": model_name
+                })
+        
+        return output_data
+    
 class OCRProcessingThread(QThread):
     """Background thread for OCR processing"""
     
     progress_updated = Signal(str)
     yolo_completed = Signal(dict)
     ocr_completed = Signal(dict) 
-    paddle_completed = Signal(dict)
+    baseline_completed = Signal(dict)
     processing_completed = Signal(dict)
     error_occurred = Signal(str)
     
-    def __init__(self, image_path: str, yolo_detector, ocr_engine, baseline_engine):
+    def __init__(self, image_path: str, yolo_detector, baseline_engine):
         super().__init__()
         self.image_path = image_path
         self.yolo_detector = yolo_detector
-        self.ocr_engine = ocr_engine
         self.baseline_engine = baseline_engine
         
     def run(self):
@@ -144,7 +176,7 @@ class OCRProcessingThread(QThread):
                 'timestamp': datetime.now().isoformat(),
                 'yolo_detection': None,
                 'ocr_results': None,
-                'paddle_results': None,
+                'baseline_results': None,
                 'comparison': None
             }
             
@@ -172,13 +204,13 @@ class OCRProcessingThread(QThread):
             
             # Step 3: PaddleOCR Processing
             self.progress_updated.emit("🧠 PaddleOCR: Processing bill text...")
-            paddle_results = self._paddle_processing(bill_crop)
-            results['paddle_results'] = paddle_results
-            self.paddle_completed.emit(paddle_results)
+            baseline_results = self._baseline_processing(bill_crop)
+            results['baseline_results'] = baseline_results
+            self.baseline_completed.emit(baseline_results)
             
             # Step 4: Comparison
             self.progress_updated.emit("📊 Generating comparison...")
-            comparison = self._generate_comparison(ocr_results, paddle_results)
+            comparison = self._generate_comparison(ocr_results, baseline_results)
             results['comparison'] = comparison
             
             # Step 5: Save results
@@ -248,48 +280,48 @@ class OCRProcessingThread(QThread):
         except Exception as e:
             raise Exception(f"YOLO detection failed: {e}")
     
-    def _ocr_engine(self, bill_crop: np.ndarray) -> Dict:
-        """OCR Model text recognition"""
+    def _ocr_processing(self, bill_crop: np.ndarray) -> Dict:
+        """Custom OCR Model text recognition"""
         try:
-            # Save crop temporarily for ORC
-            temp_path = "temp_ocr_input.jpg"
-            cv2.imwrite(temp_path, bill_crop)
-            
             # Run OCR Model prediction
-            ocr_result = self.ocr_engine.predict_text(temp_path)
-            
-            # Clean up
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-            
-            # Fix: OCR Model returns 'texts' not 'detections'
+            start_time = time.time()
+            ocr_result = self.baseline_engine.predict_text(bill_crop)
+            processing_time = time.time() - start_time
+
             texts = ocr_result.get('texts', [])
             
             return {
                 'model_name': 'OCR Model',
                 'texts': texts,
                 'total_texts': len(texts),
-                'processing_time': ocr_result.get('processing_time', 0),
-                'raw_result': ocr_result
+                'processing_time': processing_time,
+                'avg_confidence': np.mean([t['confidence'] for t in texts]) if texts else 0,
+                'raw_result': texts
             }
-            
         except Exception as e:
             return {
                 'model_name': 'OCR Model',
                 'texts': [],
                 'total_texts': 0,
+                'avg_confidence': 0,
                 'error': str(e)
             }
     
-    def _paddle_processing(self, bill_crop: np.ndarray) -> Dict:
+    def _baseline_processing(self, bill_crop: np.ndarray) -> Dict:
         """PaddleOCR text recognition"""
         try:
-            texts = self.baseline_engine.predict(bill_crop)
-            
+            start_time = time.time()
+            baseline_results = self.baseline_engine.predict(bill_crop)
+            processing_time = time.time() - start_time
+
+            texts = baseline_results.get('texts', [])
+
             return {
                 'model_name': 'PaddleOCR',
                 'texts': texts,
                 'total_texts': len(texts),
+                'processing_time': processing_time,
+                'avg_confidence': np.mean([t['confidence'] for t in texts]) if texts else 0,
                 'raw_result': texts
             }
             
@@ -298,17 +330,19 @@ class OCRProcessingThread(QThread):
                 'model_name': 'PaddleOCR', 
                 'texts': [],
                 'total_texts': 0,
+                'processing_time': 0,
+                'avg_confidence': 0,
                 'error': str(e)
             }
     
-    def _generate_comparison(self, ocr_results: Dict, paddle_results: Dict) -> Dict:
+    def _generate_comparison(self, ocr_results: Dict, baseline_results: Dict) -> Dict:
         """Generate comparison between models"""
         ocr_texts = ocr_results.get('texts', [])
-        paddle_texts = paddle_results.get('texts', [])
+        baseline_texts = baseline_results.get('texts', [])
         
         # Calculate statistics
         ocr_confidences = [t.get('confidence', 0) for t in ocr_texts]
-        paddle_confidences = [t.get('confidence', 0) for t in paddle_texts]
+        baseline_confidences = [t.get('confidence', 0) for t in baseline_texts]
         
         return {
             'ocr_stats': {
@@ -324,17 +358,17 @@ class OCRProcessingThread(QThread):
                 'confidence_median': np.median(ocr_confidences)
                 
             },
-            'paddle_stats': {
-                'total_texts': len(paddle_texts),
-                'avg_confidence': np.mean(paddle_confidences) if paddle_confidences else 0,
-                'max_confidence': max(paddle_confidences) if paddle_confidences else 0,
-                'min_confidence': min(paddle_confidences) if paddle_confidences else 0,
-                'high_confidence_count': sum(1 for c in paddle_confidences if c > 0.9),
-                'very_high_confidence_count': sum(1 for c in paddle_confidences if c > 0.95),
-                'good_confidence_count': sum(1 for c in paddle_confidences if c > 0.8), 
-                'low_confidence_count': sum(1 for c in paddle_confidences if c < 0.5),
-                'confidence_std': np.std(paddle_confidences),
-                'confidence_median': np.median(paddle_confidences)
+            'baseline_stats': {
+                'total_texts': len(baseline_texts),
+                'avg_confidence': np.mean(baseline_confidences) if baseline_confidences else 0,
+                'max_confidence': max(baseline_confidences) if baseline_confidences else 0,
+                'min_confidence': min(baseline_confidences) if baseline_confidences else 0,
+                'high_confidence_count': sum(1 for c in baseline_confidences if c > 0.9),
+                'very_high_confidence_count': sum(1 for c in baseline_confidences if c > 0.95),
+                'good_confidence_count': sum(1 for c in baseline_confidences if c > 0.8), 
+                'low_confidence_count': sum(1 for c in baseline_confidences if c < 0.5),
+                'confidence_std': np.std(baseline_confidences),
+                'confidence_median': np.median(baseline_confidences)
             }
         }
     
@@ -354,7 +388,6 @@ class OCRProcessingThread(QThread):
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(results, f, indent=2, ensure_ascii=False, default=str)
 
-
 class OCRPipelineGUI(QMainWindow):
     """Main GUI application"""
     
@@ -365,7 +398,6 @@ class OCRPipelineGUI(QMainWindow):
         
         # Initialize engines
         self.yolo_detector = None
-        self.ocr_engine = None
         self.baseline_engine = None
         
         # Processing thread
@@ -767,8 +799,8 @@ class OCRPipelineGUI(QMainWindow):
         self.results_tabs.addTab(ocr_widget, "🤖 OCR Model Details")
         
         # PaddleOCR details tab
-        paddle_widget = self.create_enhanced_detail_tab("PaddleOCR")
-        self.results_tabs.addTab(paddle_widget, "🧠 PaddleOCR Details")
+        baseline_widget = self.create_enhanced_detail_tab("PaddleOCR")
+        self.results_tabs.addTab(baseline_widget, "🧠 PaddleOCR Details")
         
         # Performance analysis tab
         performance_widget = self.create_performance_analysis_tab()
@@ -883,7 +915,7 @@ class OCRPipelineGUI(QMainWindow):
         if model_name == "OCR Model":
             self.ocr_table = table
         else:
-            self.paddle_table = table
+            self.baseline_table = table
         
         layout.addWidget(table)
         return widget
@@ -1028,8 +1060,8 @@ class OCRPipelineGUI(QMainWindow):
         self.results_tabs.addTab(ocr_widget, "🤖 OCR Model Details")
         
         # PaddleOCR details tab
-        paddle_widget = self.create_detail_tab("PaddleOCR")
-        self.results_tabs.addTab(paddle_widget, "🧠 PaddleOCR Details")
+        baseline_widget = self.create_detail_tab("PaddleOCR")
+        self.results_tabs.addTab(baseline_widget, "🧠 PaddleOCR Details")
         
         layout.addWidget(self.results_tabs)
         return panel
@@ -1076,7 +1108,7 @@ class OCRPipelineGUI(QMainWindow):
         if model_name == "OCR Model":
             self.ocr_table = table
         else:
-            self.paddle_table = table
+            self.baseline_table = table
         
         layout.addWidget(table)
         return widget
@@ -1094,20 +1126,13 @@ class OCRPipelineGUI(QMainWindow):
             else:
                 self.log("❌ Failed to load YOLO detector")
             
-            # Initialize OCR Model
-            self.ocr_engine = PaddleOCREngine()
-            if self.ocr_engine.initialize():
-                self.log("✅ PaddleOCR engine loaded")
-            else:
-                self.log("❌ Failed to load PaddleOCR engine")
-            
-            # Initialize PaddleOCR
+            # Initialize PaddleOCR Engine (handles both custom and baseline)
             self.baseline_engine = PaddleOCREngine()
             if self.baseline_engine.initialize():
                 self.log("✅ PaddleOCR engine loaded")
             else:
                 self.log("❌ Failed to load PaddleOCR engine")
-            
+
             self.log("🎉 All engines initialized successfully!")
             
         except Exception as e:
@@ -1211,7 +1236,7 @@ class OCRPipelineGUI(QMainWindow):
         self.process_btn.setEnabled(False)
         self.select_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, 0)  # Indeterminate progress
+        self.progress_bar.setRange(0, 0)
         
         self.log("🚀 Start pipeline OCR...")
         
@@ -1219,7 +1244,6 @@ class OCRPipelineGUI(QMainWindow):
         self.processing_thread = OCRProcessingThread(
             self.current_image_path,
             self.yolo_detector,
-            self.ocr_engine,
             self.baseline_engine
         )
         
@@ -1227,7 +1251,7 @@ class OCRPipelineGUI(QMainWindow):
         self.processing_thread.progress_updated.connect(self.log)
         self.processing_thread.yolo_completed.connect(self.on_yolo_completed)
         self.processing_thread.ocr_completed.connect(self.on_ocr_completed)
-        self.processing_thread.paddle_completed.connect(self.on_paddle_completed)
+        self.processing_thread.baseline_completed.connect(self.on_baseline_completed)
         self.processing_thread.processing_completed.connect(self.on_processing_completed)
         self.processing_thread.error_occurred.connect(self.on_error_occurred)
         
@@ -1332,9 +1356,9 @@ class OCRPipelineGUI(QMainWindow):
         """Handle OCR Model completion"""
         self.update_detail_table(self.ocr_table, ocr_results)
     
-    def on_paddle_completed(self, paddle_results: Dict):
+    def on_baseline_completed(self, baseline_results: Dict):
         """Handle PaddleOCR completion"""
-        self.update_detail_table(self.paddle_table, paddle_results)
+        self.update_detail_table(self.baseline_table, baseline_results)
     
     def update_detail_table(self, table: QTableWidget, results: Dict):
         """Update detail table with enhanced Vietnamese formatting"""
@@ -1456,7 +1480,7 @@ class OCRPipelineGUI(QMainWindow):
     def update_comparison_table(self, comparison: Dict):
         """Update comparison table with enhanced formatting"""
         ocr_stats = comparison.get('ocr_stats', {})
-        paddle_stats = comparison.get('paddle_stats', {})
+        baseline_stats = comparison.get('baseline_stats', {})
         
         metrics = [
             ("📊 Total Texts", "total_texts"),
@@ -1491,28 +1515,28 @@ class OCRPipelineGUI(QMainWindow):
             self.comparison_table.setItem(i, 1, ocr_item)
             
             # PaddleOCR value
-            paddle_value = paddle_stats.get(metric_key, 0)
+            baseline_value = baseline_stats.get(metric_key, 0)
             if metric_key in ['avg_confidence', 'max_confidence', 'min_confidence', 'confidence_std', 'confidence_median']:
-                paddle_str = f"{paddle_value:.3f}"
+                baseline_str = f"{baseline_value:.3f}"
             else:
-                paddle_str = str(int(paddle_value))
+                baseline_str = str(int(baseline_value))
             
-            paddle_item = QTableWidgetItem(paddle_str)
-            paddle_item.setFont(QFont("Arial", 11))
-            paddle_item.setBackground(QColor(255, 87, 34, 50))  # Light orange for PaddleOCR
-            self.comparison_table.setItem(i, 2, paddle_item)
+            baseline_item = QTableWidgetItem(baseline_str)
+            baseline_item.setFont(QFont("Arial", 11))
+            baseline_item.setBackground(QColor(255, 87, 34, 50))  # Light orange for PaddleOCR
+            self.comparison_table.setItem(i, 2, baseline_item)
             
             # Highlight better performance
             if metric_key not in ["min_confidence", "low_confidence_count", "confidence_std"]:  # Higher is better
-                if ocr_value > paddle_value:
+                if ocr_value > baseline_value:
                     ocr_item.setBackground(QColor(76, 175, 80, 100))  # Green highlight
-                elif paddle_value > ocr_value:
-                    paddle_item.setBackground(QColor(76, 175, 80, 100))  # Green highlight
+                elif baseline_value > ocr_value:
+                    baseline_item.setBackground(QColor(76, 175, 80, 100))  # Green highlight
             else:  # Lower is better for these metrics
-                if ocr_value < paddle_value:
+                if ocr_value < baseline_value:
                     ocr_item.setBackground(QColor(76, 175, 80, 100))  # Green highlight
-                elif paddle_value < ocr_value:
-                    paddle_item.setBackground(QColor(76, 175, 80, 100))  # Green highlight
+                elif baseline_value < ocr_value:
+                    baseline_item.setBackground(QColor(76, 175, 80, 100))  # Green highlight
         
         # Enhanced column sizing
         self.comparison_table.resizeColumnsToContents()
@@ -1524,22 +1548,22 @@ class OCRPipelineGUI(QMainWindow):
         """Update summary with enhanced formatting in Vietnamese"""
         yolo = results.get('yolo_detection', {})
         ocr = results.get('ocr_results', {})
-        paddle = results.get('paddle_results', {})
+        baseline = results.get('baseline_results', {})
         best_detection = yolo.get('best_detection', {})
         # Calculate processing stats
         ocr_texts = ocr.get('total_texts', 0)
-        paddle_texts = paddle.get('total_texts', 0)
+        baseline_texts = baseline.get('total_texts', 0)
         
         # Determine better performer
         ocr_avg_conf = ocr.get('avg_confidence', 0) if ocr_texts > 0 else 0
-        paddle_avg_conf = paddle.get('avg_confidence', 0) if paddle_texts > 0 else 0
+        baseline_avg_conf = baseline.get('avg_confidence', 0) if baseline_texts > 0 else 0
         
-        better_model = "ocr v6" if ocr_avg_conf > paddle_avg_conf else "PaddleOCR"
-        better_color = "#4CAF50" if ocr_avg_conf > paddle_avg_conf else "#FF9800"
+        better_model = "ocr v6" if ocr_avg_conf > baseline_avg_conf else "PaddleOCR"
+        better_color = "#4CAF50" if ocr_avg_conf > baseline_avg_conf else "#FF9800"
         
         # Calculate additional metrics
         ocr_high_conf = sum(1 for t in ocr.get('texts', []) if t.get('confidence', 0) > 0.9)
-        paddle_high_conf = sum(1 for t in paddle.get('texts', []) if t.get('confidence', 0) > 0.9)
+        baseline_high_conf = sum(1 for t in baseline.get('texts', []) if t.get('confidence', 0) > 0.9)
         
         summary_text = f"""
 <div style="font-family: Arial; line-height: 1.6;">
@@ -1569,9 +1593,9 @@ class OCRPipelineGUI(QMainWindow):
 </tr>
 <tr>
     <td style="padding: 8px; border: 1px solid #666;">🧠 PaddleOCR</td>
-    <td style="padding: 8px; text-align: center; border: 1px solid #666;"><strong>{paddle_texts}</strong></td>
-    <td style="padding: 8px; text-align: center; border: 1px solid #666;"><strong>{paddle_avg_conf:.3f}</strong></td>
-    <td style="padding: 8px; text-align: center; border: 1px solid #666;"><strong>{paddle_high_conf}</strong></td>
+    <td style="padding: 8px; text-align: center; border: 1px solid #666;"><strong>{baseline_texts}</strong></td>
+    <td style="padding: 8px; text-align: center; border: 1px solid #666;"><strong>{baseline_avg_conf:.3f}</strong></td>
+    <td style="padding: 8px; text-align: center; border: 1px solid #666;"><strong>{baseline_high_conf}</strong></td>
 </tr>
 </table>
 
@@ -1582,8 +1606,8 @@ class OCRPipelineGUI(QMainWindow):
 
 <h4 style="color: #9C27B0; margin: 15px 0 10px 0;">📈 Detailed Statistics</h4>
 <p>• Total Processing Time: <strong>{results.get('total_processing_time', 'Not available')}</strong></p>
-<p>• Number of very high confidence texts (>0.95): <strong>OCR Model: {sum(1 for t in ocr.get('texts', []) if t.get('confidence', 0) > 0.95)} | PaddleOCR: {sum(1 for t in paddle.get('texts', []) if t.get('confidence', 0) > 0.95)}</strong></p>
-<p>• High-quality text rate: <strong>OCR Model: {(ocr_high_conf/ocr_texts*100 if ocr_texts > 0 else 0):.1f}% | PaddleOCR: {(paddle_high_conf/paddle_texts*100 if paddle_texts > 0 else 0):.1f}%</strong></p>
+<p>• Number of very high confidence texts (>0.95): <strong>OCR Model: {sum(1 for t in ocr.get('texts', []) if t.get('confidence', 0) > 0.95)} | PaddleOCR: {sum(1 for t in baseline.get('texts', []) if t.get('confidence', 0) > 0.95)}</strong></p>
+<p>• High-quality text rate: <strong>OCR Model: {(ocr_high_conf/ocr_texts*100 if ocr_texts > 0 else 0):.1f}% | PaddleOCR: {(baseline_high_conf/baseline_texts*100 if baseline_texts > 0 else 0):.1f}%</strong></p>
 </div>
         """
         
