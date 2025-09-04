@@ -50,7 +50,7 @@ class PaddleOCREngine:
     
     def __init__(self):
         self.ocr_engine = None
-        self.baseline_ocr = None
+        self.baseline_engine = None
         self.initialized = False
     
     def initialize(self):
@@ -86,51 +86,96 @@ class PaddleOCREngine:
     def predict_ocr(self, image_np: np.ndarray) -> List[Dict]:
         """Predict text from image array"""
         if not self.initialized and not self.initialize():
-            return []
+            return {
+                'model_name': 'OCR Model',
+                'texts': [], 
+                'total_texts': 0, 
+                'avg_confidence': 0, 
+                'processing_time': 0,
+                'error': 'OCR engine not initialized'
+            }
         
         try:
             # Convert numpy array to image path temporarily
-            temp_path = "temp_ocr_input.jpg"
+            temp_path = f"temp_ocr_input_{int(time.time())}.jpg"  # Added timestamp to avoid conflicts
             cv2.imwrite(temp_path, image_np)
             
+            start_time = time.time()
             result = self.ocr_engine.ocr(temp_path, cls=False)
-            
+            processing_time = time.time() - start_time
+
             # Clean up temp file
             if os.path.exists(temp_path):
                 os.remove(temp_path)
             
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+            texts = self._parse_result(result, "OCR Model")
             
-            return self._parse_result(result, "OCR Model")
+            return {
+                'model_name': 'OCR Model',
+                'texts': texts,
+                'total_texts': len(texts),
+                'processing_time': processing_time,
+                'avg_confidence': np.mean([t['confidence'] for t in texts]) if texts else 0,
+                'raw_result': texts
+            }
             
         except Exception as e:
             print(f"❌ OCR Model prediction failed: {e}")
-            return []
+            return {
+                'model_name': 'OCR Model',
+                'texts': [],
+                'total_texts': 0,
+                'processing_time': 0,
+                'avg_confidence': 0,
+                'error': str(e)
+            }
 
     def predict_baseline(self, image_np: np.ndarray) -> List[Dict]:
         """Predict text using baseline PaddleOCR"""
-        if not self.initialized:
-            if not self.initialize():
-                return []
+        if not self.initialized and not self.initialize():
+            return {
+                'model_name': 'PaddleOCR',
+                'texts': [], 
+                'total_texts': 0, 
+                'avg_confidence': 0, 
+                'processing_time': 0,
+                'error': 'Baseline engine not initialized'
+            }
         
         try:
             # Save image temporarily
-            temp_path = "temp_baseline_input.jpg"
+            temp_path = f"temp_baseline_input_{int(time.time())}.jpg"  # Added timestamp
             cv2.imwrite(temp_path, image_np)
             
-            # Run baseline OCR
-            result = self.baseline_engine.ocr(temp_path, cls=False)
+            start_time = time.time()
+            result = self.baseline_engine.ocr(temp_path, cls=False)  # Fixed variable name
+            processing_time = time.time() - start_time
             
             # Clean up temp file
             if os.path.exists(temp_path):
                 os.remove(temp_path)
             
-            return self._parse_result(result, "PaddleOCR")
+            texts = self._parse_result(result, "PaddleOCR")
+            
+            return {
+                'model_name': 'PaddleOCR',
+                'texts': texts,
+                'total_texts': len(texts),
+                'processing_time': processing_time,
+                'avg_confidence': np.mean([t['confidence'] for t in texts]) if texts else 0,
+                'raw_result': texts
+            }
             
         except Exception as e:
             print(f"❌ Baseline OCR prediction failed: {e}")
-            return []
+            return {
+                'model_name': 'PaddleOCR',
+                'texts': [],
+                'total_texts': 0,
+                'processing_time': 0,
+                'avg_confidence': 0,
+                'error': str(e)
+            }
 
     def _parse_result(self, result, model_name: str) -> List[Dict]:
         """Parse PaddleOCR result into standardized format"""
@@ -143,10 +188,19 @@ class PaddleOCREngine:
                 text = text_info[0]
                 confidence = text_info[1]
                 
+                # Create bounding box format for consistency
+                bbox = [
+                    min([p[0] for p in coords]),  # x1
+                    min([p[1] for p in coords]),  # y1
+                    max([p[0] for p in coords]),  # x2
+                    max([p[1] for p in coords])   # y2
+                ]
+                
                 output_data.append({
                     "text": text,
                     "confidence": confidence,
                     "coordinates": coords,
+                    "bbox": bbox,  # Added for UI compatibility
                     "model": model_name
                 })
         
@@ -162,11 +216,11 @@ class OCRProcessingThread(QThread):
     processing_completed = Signal(dict)
     error_occurred = Signal(str)
     
-    def __init__(self, image_path: str, yolo_detector, baseline_engine):
+    def __init__(self, image_path: str, yolo_detector, ocr_engine):
         super().__init__()
         self.image_path = image_path
         self.yolo_detector = yolo_detector
-        self.baseline_engine = baseline_engine
+        self.ocr_engine = ocr_engine
         
     def run(self):
         """Main processing pipeline"""
@@ -198,7 +252,7 @@ class OCRProcessingThread(QThread):
             
             # Step 2: OCR Model Processing
             self.progress_updated.emit("🤖 OCR Model: Processing bill text...")
-            ocr_results = self._ocr_engine(bill_crop)
+            ocr_results = self._ocr_processing(bill_crop)
             results['ocr_results'] = ocr_results
             self.ocr_completed.emit(ocr_results)
             
@@ -284,20 +338,9 @@ class OCRProcessingThread(QThread):
         """Custom OCR Model text recognition"""
         try:
             # Run OCR Model prediction
-            start_time = time.time()
-            ocr_result = self.baseline_engine.predict_text(bill_crop)
-            processing_time = time.time() - start_time
-
-            texts = ocr_result.get('texts', [])
-            
-            return {
-                'model_name': 'OCR Model',
-                'texts': texts,
-                'total_texts': len(texts),
-                'processing_time': processing_time,
-                'avg_confidence': np.mean([t['confidence'] for t in texts]) if texts else 0,
-                'raw_result': texts
-            }
+            ocr_result = self.ocr_engine.predict_ocr(bill_crop)
+            return ocr_result
+        
         except Exception as e:
             return {
                 'model_name': 'OCR Model',
@@ -310,20 +353,8 @@ class OCRProcessingThread(QThread):
     def _baseline_processing(self, bill_crop: np.ndarray) -> Dict:
         """PaddleOCR text recognition"""
         try:
-            start_time = time.time()
-            baseline_results = self.baseline_engine.predict(bill_crop)
-            processing_time = time.time() - start_time
-
-            texts = baseline_results.get('texts', [])
-
-            return {
-                'model_name': 'PaddleOCR',
-                'texts': texts,
-                'total_texts': len(texts),
-                'processing_time': processing_time,
-                'avg_confidence': np.mean([t['confidence'] for t in texts]) if texts else 0,
-                'raw_result': texts
-            }
+            baseline_results = self.ocr_engine.predict_baseline(bill_crop)
+            return baseline_results
             
         except Exception as e:
             return {
@@ -380,10 +411,9 @@ class OCRProcessingThread(QThread):
         
         # Create folder 'gui_result' if it does not exist
         results_folder = Path(__file__).parent.parent / "gui_result"
-        if not os.path.exists(results_folder):
-            os.makedirs(results_folder)
+        results_folder.mkdir(exist_ok=True) 
             
-        file_path = os.path.join(results_folder, filename)
+        file_path = results_folder / filename
         
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(results, f, indent=2, ensure_ascii=False, default=str)
@@ -398,7 +428,7 @@ class OCRPipelineGUI(QMainWindow):
         
         # Initialize engines
         self.yolo_detector = None
-        self.baseline_engine = None
+        self.ocr_engine = None
         
         # Processing thread
         self.processing_thread = None
@@ -1098,12 +1128,28 @@ class OCRPipelineGUI(QMainWindow):
         """Create detailed results tab"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        
+
+        # Model info header
+        model_info_label = QLabel(f"Recognition Results {model_name}")
+        model_info_label.setStyleSheet("""
+            background-color: #4CAF50; 
+            color: white; 
+            padding: 8px; 
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 14px;
+        """)
+        layout.addWidget(model_info_label)
+
         # Create table for this model
         table = QTableWidget()
-        table.setColumnCount(5)
-        table.setHorizontalHeaderLabels(["ID", "📝 Text", "📊 Conf", "📍 Coords", "🎯 Evaluation"])
-        
+        table.setColumnCount(5)  # Fixed: ensure 5 columns
+        table.setHorizontalHeaderLabels(["ID", "Text", "Conf", "Coords", "Evaluate"])
+        table.setAlternatingRowColors(True)
+        table.verticalHeader().setVisible(False)
+        table.setSelectionBehavior(QTableWidget.SelectRows)
+        table.setSortingEnabled(True)
+
         # Store reference
         if model_name == "OCR Model":
             self.ocr_table = table
@@ -1127,8 +1173,8 @@ class OCRPipelineGUI(QMainWindow):
                 self.log("❌ Failed to load YOLO detector")
             
             # Initialize PaddleOCR Engine (handles both custom and baseline)
-            self.baseline_engine = PaddleOCREngine()
-            if self.baseline_engine.initialize():
+            self.ocr_engine = PaddleOCREngine()
+            if self.ocr_engine.initialize():
                 self.log("✅ PaddleOCR engine loaded")
             else:
                 self.log("❌ Failed to load PaddleOCR engine")
@@ -1244,7 +1290,7 @@ class OCRPipelineGUI(QMainWindow):
         self.processing_thread = OCRProcessingThread(
             self.current_image_path,
             self.yolo_detector,
-            self.baseline_engine
+            self.ocr_engine
         )
         
         # Connect signals
@@ -1364,6 +1410,10 @@ class OCRPipelineGUI(QMainWindow):
         """Update detail table with enhanced Vietnamese formatting"""
         texts = results.get('texts', [])
         table.setRowCount(len(texts))
+
+        if table.columnCount() != 5:
+            table.setColumnCount(5)
+            table.setHorizontalHeaderLabels(["ID", "Text", "Conf", "Coords", "Evaluate"])
         
         for i, text_info in enumerate(texts):
             # STT (Row number)
@@ -1409,9 +1459,13 @@ class OCRPipelineGUI(QMainWindow):
             bbox = text_info.get('bbox', [])
             
             if bbox and len(bbox) >= 4:
-                coord_str = f"({bbox[0]},{bbox[1]}) → ({bbox[2]},{bbox[3]})"
+                coord_str = f"({int(bbox[0])},{int(bbox[1])}) → ({int(bbox[2])},{int(bbox[3])})"
             elif coords and len(coords) > 0:
-                coord_str = f"[{len(coords)} points]"
+                if isinstance(coords[0], list) and len(coords[0]) >= 2:
+                    # Handle coordinate points format
+                    coord_str = f"[{len(coords)} points]"
+                else:
+                    coord_str = f"({coords[0]:.0f},{coords[1]:.0f})" if len(coords) >= 2 else "Invalid"
             else:
                 coord_str = "None"
             
