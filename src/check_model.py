@@ -2,10 +2,8 @@
 """
 Model Check Script for OCR Pipeline
 
-This script checks that model directories for PaddleOCR and SVTR v6 contain files.
+This script checks that model directories for the OCR Model contain files.
 Customize expected_files nếu cần kiểm tra tên file bắt buộc.
-Author: Tôn Thất Thanh Tuấn
-Date: 2025-08-25
 """
 
 import os
@@ -36,14 +34,14 @@ def check_model_directory(directory: Path, expected_files=None) -> bool:
 
 def main():
     current_dir = Path(__file__).parent.parent
-    paddle_dir = current_dir / "paddle_ocr"
-    svtr_dir = current_dir / "svtr_v6_ocr"
+    dbnet_dir = current_dir / "dbnet"
+    svtr_dir = current_dir / "svtr"
 
-    expected_paddle_files = []  
-    expected_svtr_files = []    
+    expected_paddle_files = ["inference.yml", "inference.pdiparams", "inference.pdiparams.info", "inference.pdmodel"]  
+    expected_svtr_files = ["inference.yml", "inference.pdiparams", "inference.pdiparams.info", "inference.pdmodel"]    
 
-    print("🔍 Checking model files in PaddleOCR and SVTR v6 directories...\n")
-    paddle_ok = check_model_directory(paddle_dir, expected_paddle_files)
+    print("🔍 Checking model files in DBNet and SVTR directories...\n")
+    paddle_ok = check_model_directory(dbnet_dir, expected_paddle_files)
     svtr_ok = check_model_directory(svtr_dir, expected_svtr_files)
 
     if paddle_ok and svtr_ok:

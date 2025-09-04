@@ -1,4 +1,4 @@
-# OCR Pipeline (YOLO + SVTR v6 + PaddleOCR + GUI)
+# OCR Pipeline (YOLO + OCR Model - PaddleOCR + GUI)
 # Python 3.8–3.11
 
 # GUI

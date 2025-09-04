@@ -2,9 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Complete OCR Pipeline with PySide6 GUI
-Integrated YOLO Detection + SVTR v6 + PaddleOCR comparison
-Author: Tôn Thất Thanh Tuấn
-Date: 2025-08-25
+Integrated YOLO Detection + OCR Model + PaddleOCR comparison
 """
 
 import sys
@@ -40,7 +38,6 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 try:
     from yolo_detect_bill.bill_detector import BillDetector
-    from svtr_v6_ocr.svtr_v6_ocr import SVTRv6TrueInference
 except ImportError as e:
     print(f"❌ Failed to import modules: {e}")
     print("Make sure all model modules are in place")
@@ -60,15 +57,24 @@ class PaddleOCREngine:
             from paddleocr import PaddleOCR
             
             # Use the custom detection model path
-            det_model_path = "paddle_ocr"
+            det_model_path = str("..\dbnet\model")
+            rec_model_path = str("..\svtr\model")
             
-            self.ocr = PaddleOCR(
+            self.ocr_engine = PaddleOCR(
                 det_model_dir=det_model_path,
-                rec=True,
+                rec_model_dir=rec_model_path,
                 use_angle_cls=False,
                 use_gpu=False,
-                lang='ch'
+                lang='en'
             )
+
+            self.baseline_engine = PaddleOCR(
+                use_angle_cls=False,
+                use_gpu=False,
+                lang='en',
+                show_log=False
+            )
+
             self.initialized = True
             return True
         except Exception as e:
@@ -118,17 +124,17 @@ class OCRProcessingThread(QThread):
     
     progress_updated = Signal(str)
     yolo_completed = Signal(dict)
-    svtr_completed = Signal(dict) 
+    ocr_completed = Signal(dict) 
     paddle_completed = Signal(dict)
     processing_completed = Signal(dict)
     error_occurred = Signal(str)
     
-    def __init__(self, image_path: str, yolo_detector, svtr_engine, paddle_engine):
+    def __init__(self, image_path: str, yolo_detector, ocr_engine, baseline_engine):
         super().__init__()
         self.image_path = image_path
         self.yolo_detector = yolo_detector
-        self.svtr_engine = svtr_engine
-        self.paddle_engine = paddle_engine
+        self.ocr_engine = ocr_engine
+        self.baseline_engine = baseline_engine
         
     def run(self):
         """Main processing pipeline"""
@@ -137,7 +143,7 @@ class OCRProcessingThread(QThread):
                 'input_image': self.image_path,
                 'timestamp': datetime.now().isoformat(),
                 'yolo_detection': None,
-                'svtr_results': None,
+                'ocr_results': None,
                 'paddle_results': None,
                 'comparison': None
             }
@@ -158,11 +164,11 @@ class OCRProcessingThread(QThread):
             
             self.progress_updated.emit(f"✅ Best bill found (confidence: {best_detection['confidence']:.3f})")
             
-            # Step 2: SVTR v6 Processing
-            self.progress_updated.emit("🤖 SVTR v6: Processing bill text...")
-            svtr_results = self._svtr_processing(bill_crop)
-            results['svtr_results'] = svtr_results
-            self.svtr_completed.emit(svtr_results)
+            # Step 2: OCR Model Processing
+            self.progress_updated.emit("🤖 OCR Model: Processing bill text...")
+            ocr_results = self._ocr_engine(bill_crop)
+            results['ocr_results'] = ocr_results
+            self.ocr_completed.emit(ocr_results)
             
             # Step 3: PaddleOCR Processing
             self.progress_updated.emit("🧠 PaddleOCR: Processing bill text...")
@@ -172,7 +178,7 @@ class OCRProcessingThread(QThread):
             
             # Step 4: Comparison
             self.progress_updated.emit("📊 Generating comparison...")
-            comparison = self._generate_comparison(svtr_results, paddle_results)
+            comparison = self._generate_comparison(ocr_results, paddle_results)
             results['comparison'] = comparison
             
             # Step 5: Save results
@@ -242,34 +248,34 @@ class OCRProcessingThread(QThread):
         except Exception as e:
             raise Exception(f"YOLO detection failed: {e}")
     
-    def _svtr_processing(self, bill_crop: np.ndarray) -> Dict:
-        """SVTR v6 text recognition"""
+    def _ocr_engine(self, bill_crop: np.ndarray) -> Dict:
+        """OCR Model text recognition"""
         try:
-            # Save crop temporarily for SVTR
-            temp_path = "temp_svtr_input.jpg"
+            # Save crop temporarily for ORC
+            temp_path = "temp_ocr_input.jpg"
             cv2.imwrite(temp_path, bill_crop)
             
-            # Run SVTR prediction
-            svtr_result = self.svtr_engine.predict_text(temp_path)
+            # Run OCR Model prediction
+            ocr_result = self.ocr_engine.predict_text(temp_path)
             
             # Clean up
             if os.path.exists(temp_path):
                 os.remove(temp_path)
             
-            # Fix: SVTR returns 'texts' not 'detections'
-            texts = svtr_result.get('texts', [])
+            # Fix: OCR Model returns 'texts' not 'detections'
+            texts = ocr_result.get('texts', [])
             
             return {
-                'model_name': 'SVTR v6',
+                'model_name': 'OCR Model',
                 'texts': texts,
                 'total_texts': len(texts),
-                'processing_time': svtr_result.get('processing_time', 0),
-                'raw_result': svtr_result
+                'processing_time': ocr_result.get('processing_time', 0),
+                'raw_result': ocr_result
             }
             
         except Exception as e:
             return {
-                'model_name': 'SVTR v6',
+                'model_name': 'OCR Model',
                 'texts': [],
                 'total_texts': 0,
                 'error': str(e)
@@ -278,7 +284,7 @@ class OCRProcessingThread(QThread):
     def _paddle_processing(self, bill_crop: np.ndarray) -> Dict:
         """PaddleOCR text recognition"""
         try:
-            texts = self.paddle_engine.predict(bill_crop)
+            texts = self.baseline_engine.predict(bill_crop)
             
             return {
                 'model_name': 'PaddleOCR',
@@ -295,27 +301,27 @@ class OCRProcessingThread(QThread):
                 'error': str(e)
             }
     
-    def _generate_comparison(self, svtr_results: Dict, paddle_results: Dict) -> Dict:
+    def _generate_comparison(self, ocr_results: Dict, paddle_results: Dict) -> Dict:
         """Generate comparison between models"""
-        svtr_texts = svtr_results.get('texts', [])
+        ocr_texts = ocr_results.get('texts', [])
         paddle_texts = paddle_results.get('texts', [])
         
         # Calculate statistics
-        svtr_confidences = [t.get('confidence', 0) for t in svtr_texts]
+        ocr_confidences = [t.get('confidence', 0) for t in ocr_texts]
         paddle_confidences = [t.get('confidence', 0) for t in paddle_texts]
         
         return {
-            'svtr_stats': {
-                'total_texts': len(svtr_texts),
-                'avg_confidence': np.mean(svtr_confidences) if svtr_confidences else 0,
-                'max_confidence': max(svtr_confidences) if svtr_confidences else 0,
-                'min_confidence': min(svtr_confidences) if svtr_confidences else 0,
-                'high_confidence_count': sum(1 for c in svtr_confidences if c > 0.9),
-                'very_high_confidence_count': sum(1 for c in svtr_confidences if c > 0.95),
-                'good_confidence_count': sum(1 for c in svtr_confidences if c > 0.8), 
-                'low_confidence_count': sum(1 for c in svtr_confidences if c < 0.5),
-                'confidence_std': np.std(svtr_confidences),
-                'confidence_median': np.median(svtr_confidences)
+            'ocr_stats': {
+                'total_texts': len(ocr_texts),
+                'avg_confidence': np.mean(ocr_confidences) if ocr_confidences else 0,
+                'max_confidence': max(ocr_confidences) if ocr_confidences else 0,
+                'min_confidence': min(ocr_confidences) if ocr_confidences else 0,
+                'high_confidence_count': sum(1 for c in ocr_confidences if c > 0.9),
+                'very_high_confidence_count': sum(1 for c in ocr_confidences if c > 0.95),
+                'good_confidence_count': sum(1 for c in ocr_confidences if c > 0.8), 
+                'low_confidence_count': sum(1 for c in ocr_confidences if c < 0.5),
+                'confidence_std': np.std(ocr_confidences),
+                'confidence_median': np.median(ocr_confidences)
                 
             },
             'paddle_stats': {
@@ -359,8 +365,8 @@ class OCRPipelineGUI(QMainWindow):
         
         # Initialize engines
         self.yolo_detector = None
-        self.svtr_engine = None
-        self.paddle_engine = None
+        self.ocr_engine = None
+        self.baseline_engine = None
         
         # Processing thread
         self.processing_thread = None
@@ -560,7 +566,7 @@ class OCRPipelineGUI(QMainWindow):
         header_layout.addWidget(title_label)
         
         # Subtitle
-        subtitle_label = QLabel("Detected YOLO • SVTR v6 • PaddleOCR")
+        subtitle_label = QLabel("Detected YOLO • OCR Model • PaddleOCR")
         subtitle_label.setStyleSheet("color: #888888; font-size: 12px; margin: 5px;")
         header_layout.addWidget(subtitle_label)
         
@@ -756,9 +762,9 @@ class OCRPipelineGUI(QMainWindow):
         comparison_widget = self.create_enhanced_comparison_tab()
         self.results_tabs.addTab(comparison_widget, "📊 Model Comparison")
         
-        # SVTR details tab
-        svtr_widget = self.create_enhanced_detail_tab("SVTR v6")
-        self.results_tabs.addTab(svtr_widget, "🤖 SVTR v6 Details")
+        # ocr details tab
+        ocr_widget = self.create_enhanced_detail_tab("OCR Model")
+        self.results_tabs.addTab(ocr_widget, "🤖 OCR Model Details")
         
         # PaddleOCR details tab
         paddle_widget = self.create_enhanced_detail_tab("PaddleOCR")
@@ -793,7 +799,7 @@ class OCRPipelineGUI(QMainWindow):
         # Enhanced comparison table
         self.comparison_table = QTableWidget()
         self.comparison_table.setColumnCount(3)
-        self.comparison_table.setHorizontalHeaderLabels(["Metrics", "SVTR v6", "PaddleOCR"])
+        self.comparison_table.setHorizontalHeaderLabels(["Metrics", "OCR Model", "PaddleOCR"])
         self.comparison_table.setAlternatingRowColors(True)
         self.comparison_table.verticalHeader().setVisible(False)
         self.comparison_table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -824,7 +830,7 @@ class OCRPipelineGUI(QMainWindow):
         self.performance_table = QTableWidget()
         self.performance_table.setColumnCount(4)
         self.performance_table.setHorizontalHeaderLabels([
-            "Metrics", "SVTR v6", "PaddleOCR", "Evaluation"
+            "Metrics", "OCR Model", "PaddleOCR", "Evaluation"
         ])
         self.performance_table.setAlternatingRowColors(True)
         self.performance_table.verticalHeader().setVisible(False)
@@ -874,8 +880,8 @@ class OCRPipelineGUI(QMainWindow):
         table.setSortingEnabled(True)
         
         # Store reference
-        if model_name == "SVTR v6":
-            self.svtr_table = table
+        if model_name == "OCR Model":
+            self.ocr_table = table
         else:
             self.paddle_table = table
         
@@ -1017,9 +1023,9 @@ class OCRPipelineGUI(QMainWindow):
         comparison_widget = self.create_comparison_tab()
         self.results_tabs.addTab(comparison_widget, "📊 Comparison")
         
-        # SVTR details tab
-        svtr_widget = self.create_detail_tab("SVTR v6")
-        self.results_tabs.addTab(svtr_widget, "🤖 SVTR v6 Details")
+        # ocr details tab
+        ocr_widget = self.create_detail_tab("OCR Model")
+        self.results_tabs.addTab(ocr_widget, "🤖 OCR Model Details")
         
         # PaddleOCR details tab
         paddle_widget = self.create_detail_tab("PaddleOCR")
@@ -1051,7 +1057,7 @@ class OCRPipelineGUI(QMainWindow):
         # Comparison table
         self.comparison_table = QTableWidget()
         self.comparison_table.setColumnCount(3)
-        self.comparison_table.setHorizontalHeaderLabels(["📊 Metrics", "🤖 SVTR v6", "🧠 PaddleOCR"])
+        self.comparison_table.setHorizontalHeaderLabels(["📊 Metrics", "🤖 OCR Model", "🧠 PaddleOCR"])
         layout.addWidget(self.comparison_table)
         
         return widget
@@ -1067,8 +1073,8 @@ class OCRPipelineGUI(QMainWindow):
         table.setHorizontalHeaderLabels(["ID", "📝 Text", "📊 Conf", "📍 Coords", "🎯 Evaluation"])
         
         # Store reference
-        if model_name == "SVTR v6":
-            self.svtr_table = table
+        if model_name == "OCR Model":
+            self.ocr_table = table
         else:
             self.paddle_table = table
         
@@ -1088,14 +1094,16 @@ class OCRPipelineGUI(QMainWindow):
             else:
                 self.log("❌ Failed to load YOLO detector")
             
-            # Initialize SVTR v6
-            svtr_model_dir = Path(__file__).parent / "svtr_v6_ocr"
-            self.svtr_engine = SVTRv6TrueInference(str(svtr_model_dir))
-            self.log("✅ SVTR v6 engine loaded")
+            # Initialize OCR Model
+            self.ocr_engine = PaddleOCREngine()
+            if self.ocr_engine.initialize():
+                self.log("✅ PaddleOCR engine loaded")
+            else:
+                self.log("❌ Failed to load PaddleOCR engine")
             
             # Initialize PaddleOCR
-            self.paddle_engine = PaddleOCREngine()
-            if self.paddle_engine.initialize():
+            self.baseline_engine = PaddleOCREngine()
+            if self.baseline_engine.initialize():
                 self.log("✅ PaddleOCR engine loaded")
             else:
                 self.log("❌ Failed to load PaddleOCR engine")
@@ -1122,7 +1130,7 @@ class OCRPipelineGUI(QMainWindow):
         # Update processing status if relevant
         if "YOLO" in message:
             self.detection_status_label.setText(message)
-        elif "SVTR" in message or "PaddleOCR" in message or "Xử lý" in message:
+        elif "ocr" in message or "PaddleOCR" in message or "Xử lý" in message:
             self.processing_status_label.setText(message)
         
         # Auto scroll to bottom
@@ -1211,14 +1219,14 @@ class OCRPipelineGUI(QMainWindow):
         self.processing_thread = OCRProcessingThread(
             self.current_image_path,
             self.yolo_detector,
-            self.svtr_engine,
-            self.paddle_engine
+            self.ocr_engine,
+            self.baseline_engine
         )
         
         # Connect signals
         self.processing_thread.progress_updated.connect(self.log)
         self.processing_thread.yolo_completed.connect(self.on_yolo_completed)
-        self.processing_thread.svtr_completed.connect(self.on_svtr_completed)
+        self.processing_thread.ocr_completed.connect(self.on_ocr_completed)
         self.processing_thread.paddle_completed.connect(self.on_paddle_completed)
         self.processing_thread.processing_completed.connect(self.on_processing_completed)
         self.processing_thread.error_occurred.connect(self.on_error_occurred)
@@ -1320,9 +1328,9 @@ class OCRPipelineGUI(QMainWindow):
                 color: #f44336;
             """)
     
-    def on_svtr_completed(self, svtr_results: Dict):
-        """Handle SVTR completion"""
-        self.update_detail_table(self.svtr_table, svtr_results)
+    def on_ocr_completed(self, ocr_results: Dict):
+        """Handle OCR Model completion"""
+        self.update_detail_table(self.ocr_table, ocr_results)
     
     def on_paddle_completed(self, paddle_results: Dict):
         """Handle PaddleOCR completion"""
@@ -1447,7 +1455,7 @@ class OCRPipelineGUI(QMainWindow):
     
     def update_comparison_table(self, comparison: Dict):
         """Update comparison table with enhanced formatting"""
-        svtr_stats = comparison.get('svtr_stats', {})
+        ocr_stats = comparison.get('ocr_stats', {})
         paddle_stats = comparison.get('paddle_stats', {})
         
         metrics = [
@@ -1470,17 +1478,17 @@ class OCRPipelineGUI(QMainWindow):
             metric_item.setFont(QFont("Arial", 11, QFont.Bold))
             self.comparison_table.setItem(i, 0, metric_item)
             
-            # SVTR value
-            svtr_value = svtr_stats.get(metric_key, 0)
+            # OCR Model value
+            ocr_value = ocr_stats.get(metric_key, 0)
             if metric_key in ['avg_confidence', 'max_confidence', 'min_confidence', 'confidence_std', 'confidence_median']:
-                svtr_str = f"{svtr_value:.3f}"
+                ocr_str = f"{ocr_value:.3f}"
             else:
-                svtr_str = str(int(svtr_value))
+                ocr_str = str(int(ocr_value))
             
-            svtr_item = QTableWidgetItem(svtr_str)
-            svtr_item.setFont(QFont("Arial", 11))
-            svtr_item.setBackground(QColor(33, 150, 243, 50))  # Light blue for SVTR
-            self.comparison_table.setItem(i, 1, svtr_item)
+            ocr_item = QTableWidgetItem(ocr_str)
+            ocr_item.setFont(QFont("Arial", 11))
+            ocr_item.setBackground(QColor(33, 150, 243, 50))  # Light blue for OCR Model
+            self.comparison_table.setItem(i, 1, ocr_item)
             
             # PaddleOCR value
             paddle_value = paddle_stats.get(metric_key, 0)
@@ -1496,41 +1504,41 @@ class OCRPipelineGUI(QMainWindow):
             
             # Highlight better performance
             if metric_key not in ["min_confidence", "low_confidence_count", "confidence_std"]:  # Higher is better
-                if svtr_value > paddle_value:
-                    svtr_item.setBackground(QColor(76, 175, 80, 100))  # Green highlight
-                elif paddle_value > svtr_value:
+                if ocr_value > paddle_value:
+                    ocr_item.setBackground(QColor(76, 175, 80, 100))  # Green highlight
+                elif paddle_value > ocr_value:
                     paddle_item.setBackground(QColor(76, 175, 80, 100))  # Green highlight
             else:  # Lower is better for these metrics
-                if svtr_value < paddle_value:
-                    svtr_item.setBackground(QColor(76, 175, 80, 100))  # Green highlight
-                elif paddle_value < svtr_value:
+                if ocr_value < paddle_value:
+                    ocr_item.setBackground(QColor(76, 175, 80, 100))  # Green highlight
+                elif paddle_value < ocr_value:
                     paddle_item.setBackground(QColor(76, 175, 80, 100))  # Green highlight
         
         # Enhanced column sizing
         self.comparison_table.resizeColumnsToContents()
         self.comparison_table.setColumnWidth(0, 280)  # Metric column
-        self.comparison_table.setColumnWidth(1, 120)  # SVTR column
+        self.comparison_table.setColumnWidth(1, 120)  # ocr column
         self.comparison_table.setColumnWidth(2, 120)  # PaddleOCR column
     
     def update_summary(self, results: Dict):
         """Update summary with enhanced formatting in Vietnamese"""
         yolo = results.get('yolo_detection', {})
-        svtr = results.get('svtr_results', {})
+        ocr = results.get('ocr_results', {})
         paddle = results.get('paddle_results', {})
         best_detection = yolo.get('best_detection', {})
         # Calculate processing stats
-        svtr_texts = svtr.get('total_texts', 0)
+        ocr_texts = ocr.get('total_texts', 0)
         paddle_texts = paddle.get('total_texts', 0)
         
         # Determine better performer
-        svtr_avg_conf = svtr.get('avg_confidence', 0) if svtr_texts > 0 else 0
+        ocr_avg_conf = ocr.get('avg_confidence', 0) if ocr_texts > 0 else 0
         paddle_avg_conf = paddle.get('avg_confidence', 0) if paddle_texts > 0 else 0
         
-        better_model = "SVTR v6" if svtr_avg_conf > paddle_avg_conf else "PaddleOCR"
-        better_color = "#4CAF50" if svtr_avg_conf > paddle_avg_conf else "#FF9800"
+        better_model = "ocr v6" if ocr_avg_conf > paddle_avg_conf else "PaddleOCR"
+        better_color = "#4CAF50" if ocr_avg_conf > paddle_avg_conf else "#FF9800"
         
         # Calculate additional metrics
-        svtr_high_conf = sum(1 for t in svtr.get('texts', []) if t.get('confidence', 0) > 0.9)
+        ocr_high_conf = sum(1 for t in ocr.get('texts', []) if t.get('confidence', 0) > 0.9)
         paddle_high_conf = sum(1 for t in paddle.get('texts', []) if t.get('confidence', 0) > 0.9)
         
         summary_text = f"""
@@ -1554,10 +1562,10 @@ class OCRPipelineGUI(QMainWindow):
     <th style="padding: 8px; text-align: center; border: 1px solid #666;">High (>0.9)</th>
 </tr>
 <tr>
-    <td style="padding: 8px; border: 1px solid #666;">🤖 SVTR v6</td>
-    <td style="padding: 8px; text-align: center; border: 1px solid #666;"><strong>{svtr_texts}</strong></td>
-    <td style="padding: 8px; text-align: center; border: 1px solid #666;"><strong>{svtr_avg_conf:.3f}</strong></td>
-    <td style="padding: 8px; text-align: center; border: 1px solid #666;"><strong>{svtr_high_conf}</strong></td>
+    <td style="padding: 8px; border: 1px solid #666;">🤖 OCR Model</td>
+    <td style="padding: 8px; text-align: center; border: 1px solid #666;"><strong>{ocr_texts}</strong></td>
+    <td style="padding: 8px; text-align: center; border: 1px solid #666;"><strong>{ocr_avg_conf:.3f}</strong></td>
+    <td style="padding: 8px; text-align: center; border: 1px solid #666;"><strong>{ocr_high_conf}</strong></td>
 </tr>
 <tr>
     <td style="padding: 8px; border: 1px solid #666;">🧠 PaddleOCR</td>
@@ -1574,8 +1582,8 @@ class OCRPipelineGUI(QMainWindow):
 
 <h4 style="color: #9C27B0; margin: 15px 0 10px 0;">📈 Detailed Statistics</h4>
 <p>• Total Processing Time: <strong>{results.get('total_processing_time', 'Not available')}</strong></p>
-<p>• Number of very high confidence texts (>0.95): <strong>SVTR: {sum(1 for t in svtr.get('texts', []) if t.get('confidence', 0) > 0.95)} | PaddleOCR: {sum(1 for t in paddle.get('texts', []) if t.get('confidence', 0) > 0.95)}</strong></p>
-<p>• High-quality text rate: <strong>SVTR: {(svtr_high_conf/svtr_texts*100 if svtr_texts > 0 else 0):.1f}% | PaddleOCR: {(paddle_high_conf/paddle_texts*100 if paddle_texts > 0 else 0):.1f}%</strong></p>
+<p>• Number of very high confidence texts (>0.95): <strong>OCR Model: {sum(1 for t in ocr.get('texts', []) if t.get('confidence', 0) > 0.95)} | PaddleOCR: {sum(1 for t in paddle.get('texts', []) if t.get('confidence', 0) > 0.95)}</strong></p>
+<p>• High-quality text rate: <strong>OCR Model: {(ocr_high_conf/ocr_texts*100 if ocr_texts > 0 else 0):.1f}% | PaddleOCR: {(paddle_high_conf/paddle_texts*100 if paddle_texts > 0 else 0):.1f}%</strong></p>
 </div>
         """
         
