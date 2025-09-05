@@ -30,19 +30,41 @@ class OCRBenchmark:
         from paddleocr import PaddleOCR
         src_folder = Path(__file__).parent
         project_root = src_folder.parent
+
+        det_model_path = str(project_root / "dbnet" / "model")
+        rec_model_path = str(project_root / "svtr" / "model")
         
-        det_model_path = project_root / "dbnet" / "model"
-        rec_model_path = project_root / "svtr" / "model"
+        det_inference_file = det_model_path / "inference.pdmodel"
+        rec_inference_file = rec_model_path / "inference.pdmodel"
         
-        self.ocr_engine = PaddleOCR(
-            det_model_dir=det_model_path,
-            rec_model_dir=rec_model_path,
-            use_angle_cls=False,
-            lang='en'
-        )
+        if not det_inference_file.exists():
+            print(f"❌ Detection model not found at: {det_inference_file}")
+            print("   Available files:", list(det_model_path.glob("*")) if det_model_path.exists() else "Directory doesn't exist")
+        
+        if not rec_inference_file.exists():
+            print(f"❌ Recognition model not found at: {rec_inference_file}")
+            print("   Available files:", list(rec_model_path.glob("*")) if rec_model_path.exists() else "Directory doesn't exist")
+        
+        #Main initialization
+        ocr_engine_loaded = False
+        if det_inference_file.exists() and rec_inference_file.exists():
+            try:
+                self.ocr_engine = PaddleOCR(
+                det_model_dir=det_model_path,
+                rec_model_dir=rec_model_path,
+                use_angle_cls=False,
+                use_gpu=False,
+                lang='en'
+                )
+                ocr_engine_loaded = True
+            except Exception as e:
+                print(f"❌ Failed to load custom models: {e}")
+        if ocr_engine_loaded:
+            print("✅ Custom OCR models loaded successfully!")
 
         self.baseline_engine = PaddleOCR(
             use_angle_cls=False,
+            use_gpu=False,
             lang='en',
             show_log=False
         )
