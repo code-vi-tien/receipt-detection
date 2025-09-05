@@ -65,32 +65,47 @@ class PaddleOCREngine:
             det_model_path = str(project_root / "dbnet" / "model")
             rec_model_path = str(project_root / "svtr" / "model")
             
-            # File validation
-            det_inference_file = det_model_path / "inference.pdmodel"
-            rec_inference_file = rec_model_path / "inference.pdmodel"
+            # File validation - Fixed path handling
+            det_model_dir = Path(det_model_path)
+            rec_model_dir = Path(rec_model_path)
+            
+            det_inference_file = det_model_dir / "inference.pdmodel"
+            rec_inference_file = rec_model_dir / "inference.pdmodel"
             
             if not det_inference_file.exists():
                 print(f"❌ Detection model not found at: {det_inference_file}")
-                print("   Available files:", list(det_model_path.glob("*")) if det_model_path.exists() else "Directory doesn't exist")
+                print("   Available files:", list(det_model_dir.glob("*")) if det_model_dir.exists() else "Directory doesn't exist")
             
             if not rec_inference_file.exists():
                 print(f"❌ Recognition model not found at: {rec_inference_file}")
-                print("   Available files:", list(rec_model_path.glob("*")) if rec_model_path.exists() else "Directory doesn't exist")
+                print("   Available files:", list(rec_model_dir.glob("*")) if rec_model_dir.exists() else "Directory doesn't exist")
             
             #Main initialization
             ocr_engine_loaded = False
             if det_inference_file.exists() and rec_inference_file.exists():
                 try:
                     self.ocr_engine = PaddleOCR(
-                    det_model_dir=det_model_path,
-                    rec_model_dir=rec_model_path,
-                    use_angle_cls=False,
-                    use_gpu=False,
-                    lang='en'
+                        det_model_dir=det_model_path,
+                        rec_model_dir=rec_model_path,
+                        use_angle_cls=False,
+                        use_gpu=False,
+                        lang='en',
+                        show_log=True,  # FIXED: Enable logging
+                        rec_image_shape="3, 32, 320",  # FIXED: Critical SVTR input shape
+                        rec_batch_num=1,              # FIXED: SVTR batch size
+                        max_text_length=25            # FIXED: SVTR text length limit
                     )
+                    
+                    # FIXED: Test the engine with a simple image
+                    test_img = np.ones((64, 320, 3), dtype=np.uint8) * 255
+                    test_result = self.ocr_engine.ocr(test_img, cls=False)
+                    
                     ocr_engine_loaded = True
                 except Exception as e:
                     print(f"❌ Failed to load custom models: {e}")
+                    import traceback
+                    traceback.print_exc()  # FIXED: Show full error details
+            
             if ocr_engine_loaded:
                 print("✅ Custom OCR models loaded successfully!")
 
@@ -106,12 +121,14 @@ class PaddleOCREngine:
         
         except Exception as e:
             print(f"❌ Failed to initialize PaddleOCR: {e}")
+            import traceback
+            traceback.print_exc()  # FIXED: Show full error details
             return False
     
     def preprocess_for_recognition(self, image_np, target_height=32, target_width=320):
         """
         Preprocess numpy image array for SVTR recognition model
-        Resize to 32x320 maintaining aspect ratio with padding/cropping
+        Enhanced preprocessing with better handling
         
         Args:
             image_np (np.ndarray): Input image as numpy array
@@ -131,6 +148,14 @@ class PaddleOCREngine:
         
         if h == 0 or w == 0:
             raise ValueError("Invalid image dimensions")
+        
+        # FIXED: Apply contrast enhancement for better OCR
+        lab = cv2.cvtColor(image_np, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        l = clahe.apply(l)
+        enhanced = cv2.merge([l, a, b])
+        image_np = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
         
         # Calculate scaling to fit target height while maintaining aspect ratio
         scale = target_height / h
@@ -175,23 +200,37 @@ class PaddleOCREngine:
                 'error': 'OCR engine not initialized'
             }
         
+        # FIXED: Check if custom engine is available
+        if self.ocr_engine is None:
+            return {
+                'model_name': 'OCR Model',
+                'texts': [], 
+                'total_texts': 0, 
+                'avg_confidence': 0, 
+                'processing_time': 0,
+                'error': 'Custom OCR engine not loaded'
+            }
+        
         try:
+            # FIXED: Debug logging
+            print(f"🔍 Input image shape: {image_np.shape}")
+            
             # Preprocess image for SVTR compatibility
             processed_image = self.preprocess_for_recognition(image_np)
+            print(f"🔍 Processed image shape: {processed_image.shape}")
 
-            # Convert numpy array to image path temporarily
-            temp_path = f"temp_ocr_input_{int(time.time())}.jpg"  # Added timestamp to avoid conflicts
-            cv2.imwrite(temp_path, processed_image)
-            
             start_time = time.time()
-            result = self.ocr_engine.ocr(temp_path, cls=False)
+            # FIXED: Use numpy array directly instead of temp file
+            result = self.ocr_engine.ocr(processed_image, cls=False)
             processing_time = time.time() - start_time
-
-            # Clean up temp file
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+            
+            # FIXED: Debug raw result
+            print(f"🔍 Raw OCR result: {result}")
             
             texts = self._parse_result(result, "OCR Model")
+            
+            # FIXED: Debug parsed texts
+            print(f"📊 Parsed {len(texts)} texts from OCR Model")
             
             return {
                 'model_name': 'OCR Model',
@@ -204,6 +243,8 @@ class PaddleOCREngine:
             
         except Exception as e:
             print(f"❌ OCR Model prediction failed: {e}")
+            import traceback
+            traceback.print_exc()  # FIXED: Show full error details
             return {
                 'model_name': 'OCR Model',
                 'texts': [],
@@ -226,19 +267,29 @@ class PaddleOCREngine:
             }
         
         try:
-            # Save image temporarily
-            temp_path = f"temp_baseline_input_{int(time.time())}.jpg"  # Added timestamp
-            cv2.imwrite(temp_path, image_np)
+            # FIXED: Use numpy array directly, add basic preprocessing
+            processed_image = image_np.copy()
+            
+            # FIXED: Ensure minimum size for baseline
+            h, w = processed_image.shape[:2]
+            if h < 32 or w < 32:
+                scale = max(32/h, 32/w)
+                new_h, new_w = int(h*scale), int(w*scale)
+                processed_image = cv2.resize(processed_image, (new_w, new_h))
+            
+            print(f"🔍 Baseline input shape: {processed_image.shape}")
             
             start_time = time.time()
-            result = self.baseline_engine.ocr(temp_path, cls=False)  # Fixed variable name
+            result = self.baseline_engine.ocr(processed_image, cls=False)
             processing_time = time.time() - start_time
             
-            # Clean up temp file
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+            # FIXED: Debug raw result
+            print(f"🔍 Baseline raw result: {result}")
             
             texts = self._parse_result(result, "PaddleOCR")
+            
+            # FIXED: Debug parsed texts
+            print(f"📊 Parsed {len(texts)} texts from Baseline")
             
             return {
                 'model_name': 'PaddleOCR',
@@ -251,6 +302,8 @@ class PaddleOCREngine:
             
         except Exception as e:
             print(f"❌ Baseline OCR prediction failed: {e}")
+            import traceback
+            traceback.print_exc()  # FIXED: Show full error details
             return {
                 'model_name': 'PaddleOCR',
                 'texts': [],
@@ -266,26 +319,29 @@ class PaddleOCREngine:
         
         if result and len(result[0]) > 0:
             for line in result[0]:
-                coords = line[0]  # Bounding box coordinates
-                text_info = line[1]  # (text, confidence)
-                text = text_info[0]
-                confidence = text_info[1]
-                
-                # Create bounding box format for consistency
-                bbox = [
-                    min([p[0] for p in coords]),  # x1
-                    min([p[1] for p in coords]),  # y1
-                    max([p[0] for p in coords]),  # x2
-                    max([p[1] for p in coords])   # y2
-                ]
-                
-                output_data.append({
-                    "text": text,
-                    "confidence": confidence,
-                    "coordinates": coords,
-                    "bbox": bbox,  # Added for UI compatibility
-                    "model": model_name
-                })
+                if len(line) >= 2:  # FIXED: Ensure we have both coordinates and text info
+                    coords = line[0]  # Bounding box coordinates
+                    text_info = line[1]  # (text, confidence)
+                    text = text_info[0] if text_info[0] else ""
+                    confidence = float(text_info[1]) if text_info[1] else 0.0
+                    
+                    # FIXED: Filter out very low confidence or empty results
+                    if confidence > 0.1 and text.strip():
+                        # Create bounding box format for consistency
+                        bbox = [
+                            min([p[0] for p in coords]),  # x1
+                            min([p[1] for p in coords]),  # y1
+                            max([p[0] for p in coords]),  # x2
+                            max([p[1] for p in coords])   # y2
+                        ]
+                        
+                        output_data.append({
+                            "text": text.strip(),  # FIXED: Strip whitespace
+                            "confidence": confidence,
+                            "coordinates": coords,
+                            "bbox": bbox,
+                            "model": model_name
+                        })
         
         return output_data
     
@@ -420,6 +476,17 @@ class OCRProcessingThread(QThread):
     def _ocr_processing(self, bill_crop: np.ndarray) -> Dict:
         """Custom OCR Model text recognition"""
         try:
+            # FIXED: Check if custom engine is available
+            if self.ocr_engine.ocr_engine is None:
+                return {
+                    'model_name': 'OCR Model',
+                    'texts': [],
+                    'total_texts': 0,
+                    'avg_confidence': 0,
+                    'processing_time': 0,
+                    'error': 'Custom OCR engine not loaded'
+                }
+            
             # Run OCR Model prediction
             ocr_result = self.ocr_engine.predict_ocr(bill_crop)
             return ocr_result
@@ -430,6 +497,7 @@ class OCRProcessingThread(QThread):
                 'texts': [],
                 'total_texts': 0,
                 'avg_confidence': 0,
+                'processing_time': 0,
                 'error': str(e)
             }
     
@@ -1259,6 +1327,12 @@ class OCRPipelineGUI(QMainWindow):
             self.ocr_engine = PaddleOCREngine()
             if self.ocr_engine.initialize():
                 self.log("✅ PaddleOCR engine loaded")
+                
+                # FIXED: Check if custom engine actually loaded
+                if self.ocr_engine.ocr_engine is None:
+                    self.log("⚠️ Custom DBNet+SVTR models not loaded - only baseline available")
+                else:
+                    self.log("✅ Custom DBNet+SVTR models loaded successfully")
             else:
                 self.log("❌ Failed to load PaddleOCR engine")
 
@@ -1266,6 +1340,8 @@ class OCRPipelineGUI(QMainWindow):
             
         except Exception as e:
             self.log(f"❌ Engine initialization failed: {e}")
+            import traceback
+            traceback.print_exc()
     
     def log(self, message: str):
         """Add message to log"""
@@ -1597,8 +1673,18 @@ class OCRPipelineGUI(QMainWindow):
         """Handle processing completion"""
         self.current_results = results
         
-        # Update comparison table
-        self.update_comparison_table(results.get('comparison', {}))
+        # Update comparison table - handle case where OCR might not have results
+        comparison = results.get('comparison', {})
+        if comparison:
+            self.update_comparison_table(comparison)
+        else:
+            # FIXED: Generate comparison even if one model failed
+            ocr_results = results.get('ocr_results', {})
+            baseline_results = results.get('baseline_results', {})
+            if ocr_results or baseline_results:
+                # Create basic comparison
+                fake_comparison = self._generate_fallback_comparison(ocr_results, baseline_results)
+                self.update_comparison_table(fake_comparison)
         
         # Update summary
         self.update_summary(results)
