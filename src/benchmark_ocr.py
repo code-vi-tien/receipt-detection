@@ -9,6 +9,7 @@ import json
 import time
 import sys
 import os
+import numpy as np
 from statistics import mean, stdev
 
 # Add paths
@@ -46,28 +47,46 @@ class OCRBenchmark:
             print("   Available files:", list(rec_model_path.glob("*")) if rec_model_path.exists() else "Directory doesn't exist")
         
         #Main initialization
+        self.ocr_engine = None
         ocr_engine_loaded = False
-        if det_inference_file.exists() and rec_inference_file.exists():
+        
+        if det_model_path.exists() and rec_model_path.exists():
             try:
+                # Try with show_log=True to see what's happening
                 self.ocr_engine = PaddleOCR(
-                det_model_dir=det_model_path,
-                rec_model_dir=rec_model_path,
-                use_angle_cls=False,
-                use_gpu=False,
-                lang='en'
+                    det_model_dir=det_model_path,
+                    rec_model_dir=rec_model_path,
+                    use_angle_cls=False,
+                    use_gpu=False,
+                    lang='en',
+                    show_log=True,  # Enable logging
+                    rec_image_shape="3, 32, 320",  # Explicit SVTR input shape
+                    rec_batch_num=1,
+                    max_text_length=25
                 )
+                
+                # Test with a simple image to verify it works
+                test_img = np.ones((64, 320, 3), dtype=np.uint8) * 255
+                test_result = self.ocr_engine.ocr(test_img, cls=False)
+                
                 ocr_engine_loaded = True
+                print("✅ Custom DBNet+SVTR models loaded successfully!")
+                
             except Exception as e:
                 print(f"❌ Failed to load custom models: {e}")
-        if ocr_engine_loaded:
-            print("✅ Custom OCR models loaded successfully!")
+                print("   Falling back to baseline only...")
+        
+        if not ocr_engine_loaded:
+            print("⚠️ Custom models not loaded - only baseline will be tested")
 
+        # Initialize baseline PaddleOCR
         self.baseline_engine = PaddleOCR(
             use_angle_cls=False,
             use_gpu=False,
             lang='en',
             show_log=False
         )
+        print("✅ Baseline PaddleOCR loaded successfully!")
     
     def crop_bill_region(self, image, confidence_threshold=0.1):
         """Crop best bill region from image"""
@@ -96,7 +115,7 @@ class OCRBenchmark:
     def preprocess_for_recognition(self, image, target_height=32, target_width=320):
         """
         Preprocess image for SVTR recognition model
-        Resize to 32x320 maintaining aspect ratio with padding/cropping
+        Enhanced preprocessing with better handling
         """
         import cv2
         import numpy as np
@@ -108,6 +127,20 @@ class OCRBenchmark:
         
         if h == 0 or w == 0:
             raise ValueError("Invalid image dimensions")
+        
+        # Convert to grayscale if needed for better OCR results
+        if len(image.shape) == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            image = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)  # Convert back to 3-channel
+        
+        # Apply some preprocessing to improve text detection
+        # Increase contrast
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        l = clahe.apply(l)
+        enhanced = cv2.merge([l, a, b])
+        image = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
         
         # Calculate scaling to fit target height while maintaining aspect ratio
         scale = target_height / h
@@ -138,19 +171,40 @@ class OCRBenchmark:
         """Process image with OCR Model and PaddleOCR and return parsed results"""
         try:
             if engine_name == "custom":
+                if self.ocr_engine is None:
+                    print("⚠️ Custom engine not available, skipping...")
+                    return {
+                        'results': [],
+                        'text_count': 0,
+                        'avg_confidence': 0,
+                        'high_confidence_count': 0,
+                        'confidences': []
+                    }
                 engine = self.ocr_engine
             elif engine_name == "baseline":
                 engine = self.baseline_engine
             else:
                 raise ValueError(f"Invalid engine_name: {engine_name}. Use 'custom' or 'baseline'")
 
-            # Run OCR
+            # Preprocess image for better OCR results
             if engine_name == "custom":
                 processed_image = self.preprocess_for_recognition(image)
             else:
-                processed_image = image
+                # For baseline, also apply some basic preprocessing
+                processed_image = image.copy()
+                # Ensure minimum size for baseline
+                h, w = processed_image.shape[:2]
+                if h < 32 or w < 32:
+                    scale = max(32/h, 32/w)
+                    new_h, new_w = int(h*scale), int(w*scale)
+                    processed_image = cv2.resize(processed_image, (new_w, new_h))
 
+            print(f"   📏 Processed image shape: {processed_image.shape}")
+            
+            # Run OCR with error handling
             result = engine.ocr(processed_image, cls=False)
+            
+            print(f"   🔍 Raw OCR result: {result}")
             
             # Parse results
             parsed_results = []
@@ -158,21 +212,26 @@ class OCRBenchmark:
 
             if result and result[0]:
                 for line in result[0]:
-                    coords = line[0]  # Bounding coordinates
-                    text_info = line[1]  # (text, confidence)
-                    text = text_info[0]
-                    confidence = text_info[1]
-                    
-                    parsed_results.append({
-                        'coords': coords,
-                        'text': text,
-                        'confidence': confidence
-                    })
-                    confidences.append(confidence)
+                    if len(line) >= 2:  # Ensure we have both coordinates and text info
+                        coords = line[0]  # Bounding coordinates
+                        text_info = line[1]  # (text, confidence)
+                        text = text_info[0] if text_info[0] else ""
+                        confidence = float(text_info[1]) if text_info[1] else 0.0
+                        
+                        # Filter out very low confidence or empty results
+                        if confidence > 0.1 and text.strip():
+                            parsed_results.append({
+                                'coords': coords,
+                                'text': text.strip(),
+                                'confidence': confidence
+                            })
+                            confidences.append(confidence)
             
             # Calculate metrics
             avg_confidence = mean(confidences) if confidences else 0
             high_confidence_count = sum(1 for c in confidences if c > 0.9)
+            
+            print(f"   📊 Found {len(parsed_results)} valid texts with avg confidence {avg_confidence:.3f}")
             
             return {
                 'results': parsed_results,
@@ -183,7 +242,9 @@ class OCRBenchmark:
             }
             
         except Exception as e:
-            print(f"❌ Error processing with PaddleOCR ({engine_name}): {e}")
+            print(f"❌ Error processing with {engine_name}: {e}")
+            import traceback
+            traceback.print_exc()
             return {
                 'results': [],
                 'text_count': 0,
@@ -219,22 +280,37 @@ class OCRBenchmark:
                     print(f"❌ Could not load image: {image_path.name}")
                     continue
 
+                print(f"   📏 Original image shape: {image.shape}")
+                
                 bill_crop = self.crop_bill_region(image)
                 
                 if bill_crop is None:
                     print(f"⚠️ No bill detected in {image_path.name}")
                     continue
 
-                print("   🔧 Processing with Custom DBNet+SVTR...")
-                start_time = time.time()
-                custom_result = self.process_image(bill_crop, "custom")
-                custom_time = time.time() - start_time
+                print(f"   📏 Cropped bill shape: {bill_crop.shape}")
+                
+                # Save debug images to see what we're processing
+                debug_folder = Path("debug_crops")
+                debug_folder.mkdir(exist_ok=True)
+                cv2.imwrite(str(debug_folder / f"crop_{image_path.name}"), bill_crop)
+
+                # Process with custom engine (if available)
+                custom_result = {'results': [], 'text_count': 0, 'avg_confidence': 0, 'high_confidence_count': 0}
+                custom_time = 0
+                
+                if self.ocr_engine is not None:
+                    print("   🔧 Processing with Custom DBNet+SVTR...")
+                    start_time = time.time()
+                    custom_result = self.process_image(bill_crop, "custom")
+                    custom_time = time.time() - start_time
+                else:
+                    print("   ⚠️ Custom engine not available, skipping...")
 
                 print("   🔧 Processing with Baseline PaddleOCR...")
                 start_time = time.time()
                 baseline_result = self.process_image(bill_crop, "baseline")
-                baseline_time = time.time() - start_time
-                
+                baseline_time = time.time() - start_time    
                 
                 # Store results
                 custom_results.append({
