@@ -59,8 +59,11 @@ class PaddleOCREngine:
             from paddleocr import PaddleOCR
             
             # Use the custom detection model path
-            det_model_path = str("..\dbnet\model")
-            rec_model_path = str("..\svtr\model")
+            src_folder = Path(__file__).parent
+            project_root = src_folder.parent
+        
+            det_model_path = project_root / "dbnet" / "model"
+            rec_model_path = project_root / "svtr" / "model"
             
             self.ocr_engine = PaddleOCR(
                 det_model_dir=det_model_path,

@@ -33,9 +33,11 @@ def check_model_directory(directory: Path, expected_files=None) -> bool:
     return True
 
 def main():
-    current_dir = Path(__file__).parent.parent
-    dbnet_dir = current_dir / "dbnet"
-    svtr_dir = current_dir / "svtr"
+    src_folder = Path(__file__).parent
+    project_root = src_folder.parent
+        
+    dbnet_dir = project_root / "dbnet" / "model"
+    svtr_dir = project_root / "svtr" / "model"
 
     expected_paddle_files = ["inference.yml", "inference.pdiparams", "inference.pdiparams.info", "inference.pdmodel"]  
     expected_svtr_files = ["inference.yml", "inference.pdiparams", "inference.pdiparams.info", "inference.pdmodel"]    
