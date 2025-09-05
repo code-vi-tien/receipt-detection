@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 OCR Performance Benchmark
-Benchmarks SVTR v6 vs PaddleOCR on multiple images
+Benchmarks OCR Model vs PaddleOCR on multiple images
 """
 
 from pathlib import Path
@@ -15,7 +15,7 @@ from statistics import mean, stdev
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 from yolo_detect_bill.bill_detector import BillDetector
-from svtr_v6_ocr.svtr_v6_ocr import SVTRv6TrueInference
+from baseline_model.baseline_ocr import Baseline_Model
 import cv2
 
 class OCRBenchmark:
@@ -27,20 +27,21 @@ class OCRBenchmark:
         self.yolo_detector = BillDetector(model_path=str(yolo_model_path))
         self.yolo_detector.load_model()
         
-        # Initialize SVTR v6
-        self.svtr_engine = SVTRv6TrueInference()
-        
         # Initialize PaddleOCR
         from paddleocr import PaddleOCR
-        det_model_path = str("..\paddle_ocr\ch_db_rest18")
+        src_folder = Path(__file__).parent
+        project_root = src_folder.parent
+        det_model_path = str(project_root / "dbnet" / "model")
         
-        self.paddle_engine = PaddleOCR(
+        self.ocr_engine = PaddleOCR(
             det_model_dir=str(det_model_path),
             rec=True,
             use_angle_cls=False,
             use_gpu=False,
             lang='ch'
         )
+
+        self.baseline_engine = Baseline_Model()
     
     def crop_bill_region(self, image, confidence_threshold=0.1):
         """Crop best bill region from image"""
@@ -66,13 +67,13 @@ class OCRBenchmark:
         
         return image[y1:y2, x1:x2]
     
-    def benchmark_svtr_v6(self, bill_crop):
-        """Benchmark SVTR v6"""
-        temp_path = "temp_benchmark_svtr.jpg"
+    def benchmark_baseline(self, bill_crop):
+        """Benchmark PaddleOCR"""
+        temp_path = "temp_benchmark_baseline.jpg"
         cv2.imwrite(temp_path, bill_crop)
-        
+
         start_time = time.time()
-        result = self.svtr_engine.predict_text(temp_path)
+        result = self.baseline_engine.predict_text(temp_path)
         processing_time = time.time() - start_time
         
         import os
@@ -82,7 +83,7 @@ class OCRBenchmark:
         texts = result.get('texts', [])
         
         return {
-            'model': 'SVTR v6',
+            'model': 'PaddleOCR',
             'processing_time': processing_time,
             'text_count': len(texts),
             'texts': texts,
@@ -90,13 +91,13 @@ class OCRBenchmark:
             'high_confidence_count': sum(1 for t in texts if t['confidence'] > 0.9)
         }
     
-    def benchmark_paddle_ocr(self, bill_crop):
-        """Benchmark PaddleOCR"""
-        temp_path = "temp_benchmark_paddle.jpg"
+    def benchmark_ocr(self, bill_crop):
+        """Benchmark OCR Model"""
+        temp_path = "temp_benchmark_ocr.jpg"
         cv2.imwrite(temp_path, bill_crop)
         
         start_time = time.time()
-        result = self.paddle_engine.ocr(temp_path, cls=False)
+        result = self.ocr_engine.ocr(temp_path, cls=False)
         processing_time = time.time() - start_time
         
         import os
@@ -118,7 +119,7 @@ class OCRBenchmark:
                 })
         
         return {
-            'model': 'PaddleOCR',
+            'model': 'OCR Model',
             'processing_time': processing_time,
             'text_count': len(texts),
             'texts': texts,
@@ -132,7 +133,7 @@ class OCRBenchmark:
         print("=" * 60)
         
         # Get test images
-        image_folder = Path("image_test")
+        image_folder = Path(__file__).parent.parent / "image_test"
         test_images = list(image_folder.glob("*.jpg"))[:num_images]
         
         if not test_images:
@@ -141,8 +142,8 @@ class OCRBenchmark:
         
         print(f"📸 Testing {len(test_images)} images...")
         
-        svtr_results = []
-        paddle_results = []
+        baseline_results = []
+        ocr_results = []
         
         for i, image_path in enumerate(test_images, 1):
             print(f"\n🔄 Processing {i}/{len(test_images)}: {image_path.name}")
@@ -155,115 +156,115 @@ class OCRBenchmark:
                 print(f"⚠️ No bill detected in {image_path.name}")
                 continue
             
-            # Benchmark SVTR v6
-            print("   🤖 Testing SVTR v6...")
-            svtr_result = self.benchmark_svtr_v6(bill_crop)
-            svtr_result['image'] = image_path.name
-            svtr_results.append(svtr_result)
-            
             # Benchmark PaddleOCR
-            print("   🧠 Testing PaddleOCR...")
-            paddle_result = self.benchmark_paddle_ocr(bill_crop)
-            paddle_result['image'] = image_path.name
-            paddle_results.append(paddle_result)
+            print("   🤖 Testing PaddleOCR...")
+            baseline_result = self.benchmark_baseline(bill_crop)
+            baseline_result['image'] = image_path.name
+            baseline_results.append(baseline_result)
             
-            print(f"   ✅ SVTR: {svtr_result['text_count']} texts ({svtr_result['processing_time']:.2f}s)")
-            print(f"   ✅ Paddle: {paddle_result['text_count']} texts ({paddle_result['processing_time']:.2f}s)")
+            # Benchmark OCR Model
+            print("   🧠 Testing OCR Model...")
+            ocr_result = self.benchmark_ocr(bill_crop)
+            ocr_result['image'] = image_path.name
+            ocr_results.append(ocr_result)
+            
+            print(f"   ✅ Paddle: {baseline_result['text_count']} texts ({baseline_result['processing_time']:.2f}s)")
+            print(f"   ✅ OCR Mdodel: {ocr_result['text_count']} texts ({ocr_result['processing_time']:.2f}s)")
         
         # Generate report
-        self.generate_report(svtr_results, paddle_results)
+        self.generate_report(baseline_results, ocr_results)
     
-    def generate_report(self, svtr_results, paddle_results):
+    def generate_report(self, baseline_results, ocr_results):
         """Generate benchmark report"""
         print(f"\n📊 BENCHMARK REPORT")
         print("=" * 60)
         
-        if not svtr_results or not paddle_results:
+        if not baseline_results or not ocr_results:
             print("❌ No results to analyze!")
             return
         
         # Processing time analysis
-        svtr_times = [r['processing_time'] for r in svtr_results]
-        paddle_times = [r['processing_time'] for r in paddle_results]
+        baseline_times = [r['processing_time'] for r in baseline_results]
+        ocr_times = [r['processing_time'] for r in ocr_results]
         
         print(f"⏱️ Processing Time (seconds):")
-        print(f"   SVTR v6:   avg={mean(svtr_times):.3f}s, std={stdev(svtr_times):.3f}s")
-        print(f"   PaddleOCR: avg={mean(paddle_times):.3f}s, std={stdev(paddle_times):.3f}s")
-        print(f"   Speed ratio: {mean(paddle_times)/mean(svtr_times):.2f}x (SVTR faster)")
+        print(f"   PaddleOCR:   avg={mean(baseline_times):.3f}s, std={stdev(baseline_times):.3f}s")
+        print(f"   OCR Model: avg={mean(ocr_times):.3f}s, std={stdev(ocr_times):.3f}s")
+        print(f"   Speed ratio: {mean(ocr_times)/mean(baseline_times):.2f}x (OCR Model faster)")
         
         # Text detection analysis
-        svtr_counts = [r['text_count'] for r in svtr_results]
-        paddle_counts = [r['text_count'] for r in paddle_results]
+        baseline_counts = [r['text_count'] for r in baseline_results]
+        ocr_counts = [r['text_count'] for r in ocr_results]
         
         print(f"\n📝 Text Detection Count:")
-        print(f"   SVTR v6:   avg={mean(svtr_counts):.1f}, std={stdev(svtr_counts):.1f}")
-        print(f"   PaddleOCR: avg={mean(paddle_counts):.1f}, std={stdev(paddle_counts):.1f}")
+        print(f"   PaddleOCR:   avg={mean(baseline_counts):.1f}, std={stdev(baseline_counts):.1f}")
+        print(f"   OCR Model: avg={mean(ocr_counts):.1f}, std={stdev(ocr_counts):.1f}")
         
         # Confidence analysis
-        svtr_confs = [r['avg_confidence'] for r in svtr_results if r['avg_confidence'] > 0]
-        paddle_confs = [r['avg_confidence'] for r in paddle_results if r['avg_confidence'] > 0]
+        baseline_confs = [r['avg_confidence'] for r in baseline_results if r['avg_confidence'] > 0]
+        ocr_confs = [r['avg_confidence'] for r in ocr_results if r['avg_confidence'] > 0]
         
-        if svtr_confs and paddle_confs:
+        if baseline_confs and ocr_confs:
             print(f"\n🎯 Average Confidence:")
-            print(f"   SVTR v6:   {mean(svtr_confs):.3f}")
-            print(f"   PaddleOCR: {mean(paddle_confs):.3f}")
+            print(f"   PaddleOCR:   {mean(baseline_confs):.3f}")
+            print(f"   OCR Model: {mean(ocr_confs):.3f}")
         
         # High confidence analysis
-        svtr_high = sum(r['high_confidence_count'] for r in svtr_results)
-        svtr_total = sum(r['text_count'] for r in svtr_results)
-        paddle_high = sum(r['high_confidence_count'] for r in paddle_results)
-        paddle_total = sum(r['text_count'] for r in paddle_results)
+        baseline_high = sum(r['high_confidence_count'] for r in baseline_results)
+        baseline_total = sum(r['text_count'] for r in baseline_results)
+        ocr_high = sum(r['high_confidence_count'] for r in ocr_results)
+        ocr_total = sum(r['text_count'] for r in ocr_results)
         
         print(f"\n🏆 High Confidence (>0.9) Ratio:")
-        if svtr_total > 0:
-            print(f"   SVTR v6:   {svtr_high}/{svtr_total} ({svtr_high/svtr_total*100:.1f}%)")
-        if paddle_total > 0:
-            print(f"   PaddleOCR: {paddle_high}/{paddle_total} ({paddle_high/paddle_total*100:.1f}%)")
+        if baseline_total > 0:
+            print(f"   PaddleOCR:   {baseline_high}/{baseline_total} ({baseline_high/baseline_total*100:.1f}%)")
+        if ocr_total > 0:
+            print(f"   OCR Model: {ocr_high}/{ocr_total} ({ocr_high/ocr_total*100:.1f}%)")
         
         # Individual image comparison
         print(f"\n🔍 Individual Image Analysis:")
         print("-" * 60)
-        print(f"{'Image':<20} {'SVTR(t/s)':<12} {'Paddle(t/s)':<12} {'Winner'}")
+        print(f"{'Image':<20} {'OCR Model(t/s)':<12} {'PaddleOCR(t/s)':<12} {'Winner'}")
         print("-" * 60)
         
-        svtr_wins = 0
-        paddle_wins = 0
+        baseline_wins = 0
+        ocr_wins = 0
         
-        for i in range(min(len(svtr_results), len(paddle_results))):
-            svtr = svtr_results[i]
-            paddle = paddle_results[i]
+        for i in range(min(len(baseline_results), len(ocr_results))):
+            baseline = baseline_results[i]
+            ocr = ocr_results[i]
             
             # Determine winner (more texts + higher confidence + faster)
-            svtr_score = svtr['text_count'] * svtr['avg_confidence'] / svtr['processing_time']
-            paddle_score = paddle['text_count'] * paddle['avg_confidence'] / paddle['processing_time']
+            baseline_score = baseline['text_count'] * baseline['avg_confidence'] / baseline['processing_time']
+            ocr_score = ocr['text_count'] * ocr['avg_confidence'] / ocr['processing_time']
             
-            if svtr_score > paddle_score:
-                winner = "SVTR ⭐"
-                svtr_wins += 1
+            if baseline_score > ocr_score:
+                winner = "PaddleOCR ⭐"
+                baseline_wins += 1
             else:
-                winner = "Paddle ⭐"
-                paddle_wins += 1
+                winner = "OCR Model ⭐"
+                ocr_wins += 1
             
-            svtr_info = f"{svtr['text_count']}/{svtr['processing_time']:.2f}s"
-            paddle_info = f"{paddle['text_count']}/{paddle['processing_time']:.2f}s"
-            print(f"{svtr['image'][:18]:<20} {svtr_info:<12} {paddle_info:<12} {winner}")
+            baseline_info = f"{baseline['text_count']}/{baseline['processing_time']:.2f}s"
+            ocr_info = f"{ocr['text_count']}/{ocr['processing_time']:.2f}s"
+            print(f"{baseline['image'][:18]:<20} {baseline_info:<12} {ocr_info:<12} {winner}")
         
         print("-" * 60)
-        print(f"🏆 Overall Winner: {'SVTR v6' if svtr_wins > paddle_wins else 'PaddleOCR'} ({max(svtr_wins, paddle_wins)}/{svtr_wins + paddle_wins} images)")
+        print(f"🏆 Overall Winner: {'PaddleOCR' if baseline_wins > ocr_wins else 'OCR Model'} ({max(baseline_wins, ocr_wins)}/{baseline_wins + ocr_wins} images)")
         
         # Save detailed results into folder benchmark_ocr_result
         benchmark_data = {
             'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
             'summary': {
-                'svtr_avg_time': mean(svtr_times),
-                'paddle_avg_time': mean(paddle_times),
-                'svtr_avg_texts': mean(svtr_counts),
-                'paddle_avg_texts': mean(paddle_counts),
-                'svtr_wins': svtr_wins,
-                'paddle_wins': paddle_wins
+                'baseline_avg_time': mean(baseline_times),
+                'ocr_avg_time': mean(ocr_times),
+                'baseline_avg_texts': mean(baseline_counts),
+                'ocr_avg_texts': mean(ocr_counts),
+                'baseline_wins': baseline_wins,
+                'ocr_wins': ocr_wins
             },
-            'svtr_results': svtr_results,
-            'paddle_results': paddle_results
+            'baseline_results': baseline_results,
+            'ocr_results': ocr_results
         }
         
         results_folder = os.path.join(os.path.dirname(__file__), "benchmark_ocr_result")

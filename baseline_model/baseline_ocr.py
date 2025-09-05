@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-SVTR v6 True Model Inference
-Using the SVTR v6 model trained from checkpoint
+PaddleOCR True Model Inference
+Using the PaddleOCR model trained from checkpoint
 """
 
 import os
@@ -23,9 +23,9 @@ except ImportError:
 os.environ['USE_CUDA'] = '0'
 os.environ['FLAGS_use_cuda'] = '0'
 
-class SVTRv6TrueInference:
+class Baseline_Model:
     """
-    SVTR v6 True Model Inference - Using a checkpoint trained model
+    PaddleOCR True Model Inference - Using a checkpoint trained model
     """
     
     def __init__(self, model_dir: str = "."):
@@ -47,7 +47,7 @@ class SVTRv6TrueInference:
     def _check_model_files(self) -> bool:
         """Check model files"""
         
-        print(f"📁 Checking SVTR v6 model in: {self.model_dir}")
+        print(f"📁 Checking PaddleOCR model in: {self.model_dir}")
         
         required_files = [
             "best_accuracy.pdparams",
@@ -64,13 +64,13 @@ class SVTRv6TrueInference:
                 print(f"   ❌ {file} - Missing!")
                 return False
         
-        print("✅ SVTR v6 model files ready!")
+        print("✅ PaddleOCR model files ready!")
         return True
     
     def _load_config(self):
         """Load SVTR configuration"""
         
-        # Create default config for SVTR v6
+        # Create default config for PaddleOCR
         self.config = {
             "Global": {
                 "debug": False,
@@ -125,15 +125,15 @@ class SVTRv6TrueInference:
             }
         }
         
-        print("✅ SVTR v6 config loaded")
+        print("✅ PaddleOCR config loaded")
     
     def _init_predictor(self):
-        """Initialize SVTR v6 predictor with custom model"""
+        """Initialize PaddleOCR predictor with custom model"""
         
         try:
             import paddle
             
-            print("🚀 Initializing SVTR v6 custom predictor...")
+            print("🚀 Initializing PaddleOCR custom predictor...")
             
             # Set device to CPU
             paddle.device.set_device('cpu')
@@ -145,7 +145,7 @@ class SVTRv6TrueInference:
                 print(f"❌ Model file not found: {model_file}")
                 return False
             
-            print(f"📂 Loading SVTR v6 custom model from: {model_file}")
+            print(f"📂 Loading PaddleOCR custom model from: {model_file}")
             
             # Initialize PaddleOCR first
             from paddleocr import PaddleOCR
@@ -153,26 +153,26 @@ class SVTRv6TrueInference:
             # Use basic PaddleOCR first, later to override with custom model
             self.predictor = PaddleOCR(lang='en')
             
-            print("✅ SVTR v6 custom predictor ready!")
+            print("✅ PaddleOCR custom predictor ready!")
             print("⚠️ Note: Currently using standard PaddleOCR, will try to integrate custom model")
             return True
             
         except Exception as e:
-            print(f"❌ Failed to initialize SVTR v6 predictor: {e}")
+            print(f"❌ Failed to initialize PaddleOCR predictor: {e}")
             print("🔄 Fallback to basic PaddleOCR...")
             
             # Fallback if error occurs
             try:
                 from paddleocr import PaddleOCR
                 self.predictor = PaddleOCR(lang='en')
-                print("⚠️ Using fallback PaddleOCR (not SVTR v6)")
+                print("⚠️ Using fallback PaddleOCR (not PaddleOCR)")
                 return True
             except Exception as fallback_error:
                 print(f"❌ Fallback also failed: {fallback_error}")
                 return False
     
     def predict_text(self, image_path: Union[str, Path]) -> Dict[str, Any]:
-        """Predict text using SVTR v6 model"""
+        """Predict text using PaddleOCR model"""
         
         if self.predictor is None:
             return {"error": "Predictor not initialized", "status": "failed"}
@@ -185,12 +185,12 @@ class SVTRv6TrueInference:
             if image is None:
                 return {"error": f"Cannot load image: {image_path}", "status": "failed"}
             
-            print(f"🔍 SVTR v6 processing: {image_path.name}")
+            print(f"🔍 PaddleOCR processing: {image_path.name}")
             
             # Run prediction using the model - using ocr() instead of predict()
             results = self.predictor.ocr(str(image_path), cls=True)
             
-            # Process results using SVTR v6 format (similar to test_pre.py structure)
+            # Process results using PaddleOCR format (similar to test_pre.py structure)
             processed_results = []
             if results and results[0]:
                 print(f"🔍 Detected {len(results[0])} text regions:")
@@ -220,11 +220,11 @@ class SVTRv6TrueInference:
                 print("\n" + "=" * 60)
                 print(f"✅ Results saved to {output_file} ({len(processed_results)} text regions)")
                 print(f"📁 Image processed: {image_path.name}")
-                print(f"🤖 Model: SVTR v6 (Custom Trained)")
+                print(f"🤖 Model: PaddleOCR")
             
             return {
                 "image_name": image_path.name,
-                "model": "SVTR v6",
+                "model": "PaddleOCR",
                 "text_count": len(processed_results),
                 "texts": processed_results,
                 "status": "success"
@@ -233,14 +233,14 @@ class SVTRv6TrueInference:
         except Exception as e:
             return {
                 "image_name": str(image_path),
-                "model": "SVTR v6",
+                "model": "PaddleOCR",
                 "error": str(e),
                 "status": "failed"
             }
     
     def batch_predict(self, image_folder: str, output_folder: str = "svtr_v6_results", 
                      max_images: int = None) -> Dict[str, Any]:
-        """Batch prediction with SVTR v6"""
+        """Batch prediction with PaddleOCR"""
         
         image_dir = Path(image_folder)
         output_dir = Path(output_folder)
@@ -257,12 +257,12 @@ class SVTRv6TrueInference:
         if not image_files:
             return {"error": "No .jpg files found"}
         
-        print(f"📁 SVTR v6 batch processing: {len(image_files)} images")
+        print(f"📁 PaddleOCR batch processing: {len(image_files)} images")
         
         # Results
         batch_results = {
             "timestamp": datetime.now().isoformat(),
-            "model": "SVTR v6 (Custom Trained)",
+            "model": "PaddleOCR",
             "model_dir": str(self.model_dir),
             "total_images": len(image_files),
             "results": []
@@ -283,7 +283,7 @@ class SVTRv6TrueInference:
                 
                 # Show preview
                 texts = result["texts"]
-                print(f"   ✅ SVTR v6: {len(texts)} text regions")
+                print(f"   ✅ PaddleOCR: {len(texts)} text regions")
                 for j, text_info in enumerate(texts[:3]):
                     print(f"      {j+1}. '{text_info['text']}' ({text_info['confidence']:.3f})")
                 if len(texts) > 3:
@@ -300,7 +300,7 @@ class SVTRv6TrueInference:
         successful = len([r for r in batch_results["results"] if r["status"] == "success"])
         total_texts = sum([len(r.get("texts", [])) for r in batch_results["results"]])
         
-        print(f"\\n📊 SVTR v6 FINAL RESULTS:")
+        print(f"\\n📊 PaddleOCR FINAL RESULTS:")
         print(f"   ✅ Success: {successful}/{len(image_files)} images")
         print(f"   📝 Total texts: {total_texts} regions")
         print(f"   💾 Results: {output_dir}")
@@ -311,13 +311,13 @@ class SVTRv6TrueInference:
 def main():
     """Main function"""
     
-    print("🎯 SVTR v6 True Model Inference")
+    print("🎯 PaddleOCR")
     print("=" * 60)
-    print("Using SVTR v6 model trained from checkpoint")
+    print("Using Paddle as baseline model")
     print("=" * 60)
     
-    # Initialize SVTR v6
-    svtr = SVTRv6TrueInference()
+    # Initialize baseline model
+    baseline = Baseline_Model()
     
     # Test with single image from parent directory
     test_dirs = ["../image_test", "../.", "../dataset"]
@@ -333,10 +333,10 @@ def main():
     
     if test_image:
         print(f"\\n📁 Testing with: {test_image}")
-        result = svtr.predict_text(test_image)
+        result = baseline.predict_text(test_image)
         
         if result["status"] == "success":
-            print(f"\\n✅ SVTR v6 Results:")
+            print(f"\\n✅ PaddleOCR Results:")
             print(f"   📸 Image: {result['image_name']}")
             print(f"   🤖 Model: {result['model']}")
             print(f"   📝 Text count: {result['text_count']}")
@@ -352,17 +352,17 @@ def main():
     # Batch processing
     if len(sys.argv) > 1 and sys.argv[1] == "batch":
         print("\\n" + "="*60)
-        print("🚀 SVTR v6 Batch Processing")
+        print("🚀 PaddleOCR Batch Processing")
         print("="*60)
         
-        batch_results = svtr.batch_predict(
+        batch_results = baseline.batch_predict(
             image_folder="../image_test",
             output_folder="../svtr_v6_results",
             max_images=10
         )
         
         if "error" not in batch_results:
-            print("\\n🎉 SVTR v6 batch processing completed!")
+            print("\\n🎉 PaddleOCR batch processing completed!")
         else:
             print(f"❌ Batch error: {batch_results['error']}")
 

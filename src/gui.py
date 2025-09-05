@@ -40,7 +40,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 try:
     from yolo_detect_bill.bill_detector import BillDetector
-    from svtr_v6_ocr.svtr_v6_ocr import SVTRv6TrueInference
+    from baseline_model.baseline_ocr import SVTRv6TrueInference
 except ImportError as e:
     print(f"❌ Failed to import modules: {e}")
     print("Make sure all model modules are in place")
