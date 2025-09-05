@@ -108,6 +108,61 @@ class PaddleOCREngine:
             print(f"❌ Failed to initialize PaddleOCR: {e}")
             return False
     
+    def preprocess_for_recognition(self, image_np, target_height=32, target_width=320):
+        """
+        Preprocess numpy image array for SVTR recognition model
+        Resize to 32x320 maintaining aspect ratio with padding/cropping
+        
+        Args:
+            image_np (np.ndarray): Input image as numpy array
+            target_height (int): Target height for SVTR (default: 32)
+            target_width (int): Target width for SVTR (default: 320)
+        
+        Returns:
+            np.ndarray: Preprocessed image array
+        """
+        if image_np is None:
+            raise ValueError("Input image array is None")
+        
+        if len(image_np.shape) != 3:
+            raise ValueError(f"Expected 3D image array, got shape: {image_np.shape}")
+        
+        h, w, c = image_np.shape
+        
+        if h == 0 or w == 0:
+            raise ValueError("Invalid image dimensions")
+        
+        # Calculate scaling to fit target height while maintaining aspect ratio
+        scale = target_height / h
+        new_w = int(w * scale)
+        
+        # Resize maintaining aspect ratio
+        if new_w <= target_width:
+            # Resize and pad width if necessary
+            resized = cv2.resize(image_np, (new_w, target_height), interpolation=cv2.INTER_AREA)
+            
+            if new_w < target_width:
+                # Create padding array with white background
+                pad_width = target_width - new_w
+                padding = np.full((target_height, pad_width, c), 255, dtype=image_np.dtype)
+                
+                # Concatenate original resized image with white padding
+                padded = np.concatenate([resized, padding], axis=1)
+                return padded
+            else:
+                return resized
+        else:
+            # Width too large, crop from center or resize to target_width
+            if new_w > target_width * 1.5:  # Much wider, resize directly
+                resized = cv2.resize(image_np, (target_width, target_height), interpolation=cv2.INTER_AREA)
+                return resized
+            else:
+                # Slightly wider, crop from center
+                resized = cv2.resize(image_np, (new_w, target_height), interpolation=cv2.INTER_AREA)
+                start_x = (new_w - target_width) // 2
+                cropped = resized[:, start_x:start_x + target_width]
+                return cropped
+        
     def predict_ocr(self, image_np: np.ndarray) -> List[Dict]:
         """Predict text from image array"""
         if not self.initialized and not self.initialize():
@@ -121,9 +176,12 @@ class PaddleOCREngine:
             }
         
         try:
+            # Preprocess image for SVTR compatibility
+            processed_image = self.preprocess_for_recognition(image_np)
+
             # Convert numpy array to image path temporarily
             temp_path = f"temp_ocr_input_{int(time.time())}.jpg"  # Added timestamp to avoid conflicts
-            cv2.imwrite(temp_path, image_np)
+            cv2.imwrite(temp_path, processed_image)
             
             start_time = time.time()
             result = self.ocr_engine.ocr(temp_path, cls=False)

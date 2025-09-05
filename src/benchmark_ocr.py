@@ -93,6 +93,47 @@ class OCRBenchmark:
         
         return image[y1:y2, x1:x2]
     
+    def preprocess_for_recognition(self, image, target_height=32, target_width=320):
+        """
+        Preprocess image for SVTR recognition model
+        Resize to 32x320 maintaining aspect ratio with padding/cropping
+        """
+        import cv2
+        import numpy as np
+        
+        if image is None:
+            raise ValueError("Input image is None")
+        
+        h, w = image.shape[:2]
+        
+        if h == 0 or w == 0:
+            raise ValueError("Invalid image dimensions")
+        
+        # Calculate scaling to fit target height while maintaining aspect ratio
+        scale = target_height / h
+        new_w = int(w * scale)
+        
+        # Resize maintaining aspect ratio
+        if new_w <= target_width:
+            # Resize and pad width if necessary
+            resized = cv2.resize(image, (new_w, target_height), interpolation=cv2.INTER_AREA)
+            
+            if new_w < target_width:
+                # Pad width to target_width with white background
+                pad_width = target_width - new_w
+                padded = cv2.copyMakeBorder(
+                    resized, 0, 0, 0, pad_width, 
+                    cv2.BORDER_CONSTANT, 
+                    value=[255, 255, 255]  # White padding
+                )
+                return padded
+            else:
+                return resized
+        else:
+            # Width too large, resize to target_width directly
+            resized = cv2.resize(image, (target_width, target_height), interpolation=cv2.INTER_AREA)
+            return resized
+        
     def process_image(self, image, engine_name="custom"):
         """Process image with OCR Model and PaddleOCR and return parsed results"""
         try:
@@ -104,7 +145,12 @@ class OCRBenchmark:
                 raise ValueError(f"Invalid engine_name: {engine_name}. Use 'custom' or 'baseline'")
 
             # Run OCR
-            result = engine.ocr(image, cls=False)
+            if engine_name == "custom":
+                processed_image = self.preprocess_for_recognition(image)
+            else:
+                processed_image = image
+
+            result = engine.ocr(processed_image, cls=False)
             
             # Parse results
             parsed_results = []
