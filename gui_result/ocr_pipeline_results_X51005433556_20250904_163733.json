@@ -1,0 +1,82 @@
+{
+  "input_image": "C:/Tailieu/Project/AI/receipt-detection/image_test/X51005433556.jpg",
+  "timestamp": "2025-09-04T16:37:33.669328",
+  "yolo_detection": {
+    "detections": [
+      {
+        "bbox": [
+          247.93247985839844,
+          17.31134796142578,
+          677.0994873046875,
+          1516.2711181640625
+        ],
+        "confidence": 0.3044995665550232,
+        "class": "Receipt",
+        "x1": 247.93247985839844,
+        "y1": 17.31134796142578,
+        "x2": 677.0994873046875,
+        "y2": 1516.2711181640625
+      }
+    ],
+    "best_detection": {
+      "bbox": [
+        247.93247985839844,
+        17.31134796142578,
+        677.0994873046875,
+        1516.2711181640625
+      ],
+      "confidence": 0.3044995665550232,
+      "class": "Receipt",
+      "x1": 247.93247985839844,
+      "y1": 17.31134796142578,
+      "x2": 677.0994873046875,
+      "y2": 1516.2711181640625
+    },
+    "bill_crop": "[[[255 255 255]\n  [255 255 255]\n  [255 255 255]\n  ...\n  [255 255 255]\n  [255 255 255]\n  [255 255 255]]\n\n [[255 255 255]\n  [255 255 255]\n  [255 255 255]\n  ...\n  [255 255 255]\n  [255 255 255]\n  [255 255 255]]\n\n [[255 255 255]\n  [255 255 255]\n  [255 255 255]\n  ...\n  [255 255 255]\n  [255 255 255]\n  [255 255 255]]\n\n ...\n\n [[255 255 255]\n  [255 255 255]\n  [255 255 255]\n  ...\n  [255 255 255]\n  [255 255 255]\n  [255 255 255]]\n\n [[255 255 255]\n  [255 255 255]\n  [255 255 255]\n  ...\n  [255 255 255]\n  [255 255 255]\n  [255 255 255]]\n\n [[255 255 255]\n  [255 255 255]\n  [255 255 255]\n  ...\n  [255 255 255]\n  [255 255 255]\n  [255 255 255]]]",
+    "annotated_image": "[[[255 255 255]\n  [255 255 255]\n  [255 255 255]\n  ...\n  [255 255 255]\n  [255 255 255]\n  [255 255 255]]\n\n [[255 255 255]\n  [255 255 255]\n  [255 255 255]\n  ...\n  [255 255 255]\n  [255 255 255]\n  [255 255 255]]\n\n [[255 255 255]\n  [255 255 255]\n  [255 255 255]\n  ...\n  [255 255 255]\n  [255 255 255]\n  [255 255 255]]\n\n ...\n\n [[255 255 255]\n  [255 255 255]\n  [255 255 255]\n  ...\n  [255 255 255]\n  [255 255 255]\n  [255 255 255]]\n\n [[255 255 255]\n  [255 255 255]\n  [255 255 255]\n  ...\n  [255 255 255]\n  [255 255 255]\n  [255 255 255]]\n\n [[255 255 255]\n  [255 255 255]\n  [255 255 255]\n  ...\n  [255 255 255]\n  [255 255 255]\n  [255 255 255]]]",
+    "crop_coordinates": {
+      "x1": 237,
+      "y1": 7,
+      "x2": 687,
+      "y2": 1526
+    }
+  },
+  "ocr_results": {
+    "model_name": "OCR Model",
+    "texts": [],
+    "total_texts": 0,
+    "error": "'PaddleOCREngine' object has no attribute 'predict_text'"
+  },
+  "paddle_results": {
+    "model_name": "PaddleOCR",
+    "texts": [],
+    "total_texts": 0,
+    "raw_result": []
+  },
+  "comparison": {
+    "ocr_stats": {
+      "total_texts": 0,
+      "avg_confidence": 0,
+      "max_confidence": 0,
+      "min_confidence": 0,
+      "high_confidence_count": 0,
+      "very_high_confidence_count": 0,
+      "good_confidence_count": 0,
+      "low_confidence_count": 0,
+      "confidence_std": NaN,
+      "confidence_median": NaN
+    },
+    "paddle_stats": {
+      "total_texts": 0,
+      "avg_confidence": 0,
+      "max_confidence": 0,
+      "min_confidence": 0,
+      "high_confidence_count": 0,
+      "very_high_confidence_count": 0,
+      "good_confidence_count": 0,
+      "low_confidence_count": 0,
+      "confidence_std": NaN,
+      "confidence_median": NaN
+    }
+  }
+}

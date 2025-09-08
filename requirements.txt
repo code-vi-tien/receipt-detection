@@ -1,5 +1,5 @@
-# OCR Pipeline (YOLO + PaddleOCR + GUI)
-# Python 3.10 - PaddleOCR Constrained Versions
+# OCR Pipeline (YOLO + OCR Model - PaddleOCR + GUI)
+# Python 3.8–3.11
 
 # GUI
 PySide6==6.5.3

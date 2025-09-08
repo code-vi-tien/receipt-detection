@@ -1,134 +1,62 @@
-Hpi:
-  backend_configs:
-    paddle_infer:
-      trt_dynamic_shapes: &id001
-        x:
-        - - 1
-          - 3
-          - 48
-          - 160
-        - - 1
-          - 3
-          - 48
-          - 320
-        - - 8
-          - 3
-          - 48
-          - 3200
-    tensorrt:
-      dynamic_shapes: *id001
-PreProcess:
-  transform_ops:
-  - DecodeImage:
-      channel_first: false
-      img_mode: BGR
-  - CTCLabelEncode: {}
-  - SVTRRecResizeImg:
-      image_shape:
-      - 3
-      - 32
-      - 320
-      padding: false
-  - KeepKeys:
-      keep_keys:
-      - image
-      - label
-      - length
+Architecture:
+  Backbone:
+    depth:
+    - 3
+    - 6
+    - 3
+    embed_dim:
+    - 64
+    - 128
+    - 256
+    img_size:
+    - 32
+    - 320
+    last_stage: true
+    local_mixer:
+    - - 7
+      - 11
+    - - 7
+      - 11
+    - - 7
+      - 11
+    mixer:
+    - Local
+    - Local
+    - Local
+    - Local
+    - Local
+    - Local
+    - Global
+    - Global
+    - Global
+    - Global
+    - Global
+    - Global
+    name: SVTRNet
+    num_heads:
+    - 4
+    - 8
+    - 16
+    out_channels: 128
+    patch_merging: Conv
+    prenorm: false
+  Head:
+    fc_decay: 0.001
+    name: CTCHead
+  Neck:
+    encoder_type: reshape
+    name: SequenceEncoder
+  Transform: null
+  algorithm: SVTR
+  model_type: rec
+
+Global:
+  model_name: "en_PP-OCRv3_rec"
+  algorithm: SVTR
+  max_text_length: 25
+  character_dict_path: /content/PaddleOCR/ppocr/utils/en_dict.txt
+  character_type: en
+  use_space_char: true
+
 PostProcess:
   name: CTCLabelDecode
-  character_dict:
-  - '0'
-  - '1'
-  - '2'
-  - '3'
-  - '4'
-  - '5'
-  - '6'
-  - '7'
-  - '8'
-  - '9'
-  - ':'
-  - ;
-  - <
-  - '='
-  - '>'
-  - '?'
-  - '@'
-  - A
-  - B
-  - C
-  - D
-  - E
-  - F
-  - G
-  - H
-  - I
-  - J
-  - K
-  - L
-  - M
-  - N
-  - O
-  - P
-  - Q
-  - R
-  - S
-  - T
-  - U
-  - V
-  - W
-  - X
-  - Y
-  - Z
-  - '['
-  - \
-  - ']'
-  - ^
-  - _
-  - '`'
-  - a
-  - b
-  - c
-  - d
-  - e
-  - f
-  - g
-  - h
-  - i
-  - j
-  - k
-  - l
-  - m
-  - n
-  - o
-  - p
-  - q
-  - r
-  - s
-  - t
-  - u
-  - v
-  - w
-  - x
-  - y
-  - z
-  - '{'
-  - '|'
-  - '}'
-  - '~'
-  - '!'
-  - '"'
-  - '#'
-  - $
-  - '%'
-  - '&'
-  - ''''
-  - (
-  - )
-  - '*'
-  - +
-  - ','
-  - '-'
-  - .
-  - /
-  - ' '

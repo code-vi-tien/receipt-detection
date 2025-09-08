@@ -33,17 +33,16 @@ def check_model_directory(directory: Path, expected_files=None) -> bool:
     return True
 
 def main():
-    src_folder = Path(__file__).parent
-    project_root = src_folder.parent
-        
-    dbnet_dir = project_root / "dbnet" / "model"
-    svtr_dir = project_root / "svtr" / "model"
+    current_dir = Path(__file__).parent.parent
+    dbnet_dir = current_dir / "dbnet"
+    svtr_dir = current_dir / "svtr"
 
-    expected_files = ["inference.yml", "inference.pdiparams", "inference.pdiparams.info", "inference.pdmodel"]  
+    expected_paddle_files = ["inference.yml", "inference.pdiparams", "inference.pdiparams.info", "inference.pdmodel"]  
+    expected_svtr_files = ["inference.yml", "inference.pdiparams", "inference.pdiparams.info", "inference.pdmodel"]    
 
     print("🔍 Checking model files in DBNet and SVTR directories...\n")
-    paddle_ok = check_model_directory(dbnet_dir, expected_files)
-    svtr_ok = check_model_directory(svtr_dir, expected_files)
+    paddle_ok = check_model_directory(dbnet_dir, expected_paddle_files)
+    svtr_ok = check_model_directory(svtr_dir, expected_svtr_files)
 
     if paddle_ok and svtr_ok:
         print("\n✅ All model directories have the required files.")
