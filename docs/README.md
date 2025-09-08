@@ -1,8 +1,14 @@
 # 🚀 AI OCR Pipeline – Bill Recognition (GUI + Core)
-**Author:** Tôn Thất Thanh Tuấn  
+**Authors:** 
+- Nguyễn Quốc Hiệu 
+- Đoàn Trung Kiên 
+- Lê Nguyễn Gia Phúc  
+- Phan Quốc Đại Sơn   
+- Tôn Thất Thanh Tuấn 
+
 **Date:** 2025-08-25
 
-This system combines **YOLOv8** (detection), **SVTR v6** (primary OCR), and **PaddleOCR** (backup/comparison), all integrated into a modern **PySide6** GUI. This README merges an overview of the pipeline with details on the GUI and project structure.
+This system combines **YOLOv8** (detection), **OCR Model** (primary OCR), and **PaddleOCR** (baseline), all integrated into a modern **PySide6** GUI. This README merges an overview of the pipeline with details on the GUI and project structure.
 
 ---
 
@@ -25,8 +31,8 @@ This system combines **YOLOv8** (detection), **SVTR v6** (primary OCR), and **Pa
 ## 🌟 Overview
 **Bill OCR System** is an AI application that automatically detects bill/receipt regions and recognizes text with high accuracy. The pipeline consists of:
 - **🎯 YOLO v8**: Detects and crops bill regions from the input image.
-- **🤖 SVTR v6**: Performs primary OCR with high accuracy.
-- **🧠 PaddleOCR**: Works as a backup OCR engine and for cross-checking results.
+- **🤖 OCR Model**: Performs primary OCR with high accuracy.
+- **🧠 PaddleOCR**: Baseline model for cross-checking results.
 
 The GUI (implemented in Vietnamese) uses a modern dark theme and provides real‑time result analytics.
 
@@ -60,7 +66,7 @@ The GUI (implemented in Vietnamese) uses a modern dark theme and provides real�
 ## 📋 Key Features
 ### 🔍 Detection & Processing
 - Automatic detection (YOLO) → Smart cropping → Pre‑processing.
-- Dual OCR (SVTR v6 + PaddleOCR) with confidence analysis.
+- Dual OCR (SVTR + DBNet vs PaddleOCR) with confidence analysis.
 
 ### 📊 Analytics & Stats
 - Compare two OCR engines with multiple performance metrics.
@@ -141,21 +147,30 @@ graph TD
 ## 📁 Project Structure
 ```
 receipt-detection/
-├── test_setup.py              # Environment and dependency check
-├── requirements.txt           # Dependencies list
-├── image_test/                # Sample images for testing
-├── gui_result/                # Folder for exported JSON results (auto-created)
-├── benchmark_ocr_result/      # Folder for exported JSON results (auto-created)
+├── test_setup.py                         # Environment and dependency check
+├── requirements.txt                      # Dependencies list
+├── image_test/                           # Sample images for testing
+├── gui_result/                           # Folder for exported JSON results (auto-created)
+├── benchmark_ocr_result/                 # Folder for exported JSON results (auto-created)
 ├── src/
 │  ├── gui.py
 │  ├── benchmark_ocr.py
 │  └── check_model.py
-├── yolo_detect_bill/          # YOLO detection module and models
-│   └── bill_models.pt         # YOLO model file (used via subfolder path)
-├── svtr_v6_ocr/               # SVTR v6 OCR module and models
-│   └── svtr_model.onnx        # (Example) SVTR v6 model file – update if needed
-└── paddle_ocr/                # PaddleOCR module and models
-    └── paddle_model.pdparams  # (Example) PaddleOCR model parameters – update if needed
+├── yolo_detect_bill/                     # YOLO detection module and models
+│   └── bill_models.pt                    # YOLO model file (used via subfolder path)
+├── dbnet/                                # DBNet module and models 
+│   └── model
+│       ├── inference.pdiparams
+|       ├── inference.pdiparams.info
+|       ├── inference.pdmodel
+|       └── inference.yml
+└── svtr/                                # SVTR module and models
+│   └── model
+│       ├── inference.json
+│       ├── inference.pdiparams
+|       ├── inference.pdiparams.info
+|       ├── inference.pdmodel
+|       └── inference.yml               
 ```
 
 ---
@@ -171,10 +186,10 @@ Key tunable parameters (typically found in the code):
 ## ⚡ Performance & Comparison
 | Model        | Texts Detected | Avg Confidence | High Conf (>0.9) | Processing Time |
 |--------------|----------------|----------------|------------------|-----------------|
-| **SVTR v6**  | 44             | 0.931          | 89%              | ~2.3s           |
-| **PaddleOCR**| 108            | 0.913          | 67%              | ~1.8s           |
+| **OCR Model**| 87             | 0.858          | 39               | ~5.3s           |
+| **PaddleOCR**| 41             | 0.951          | 37               | ~3.8s           |
 
-- **SVTR v6**: Returns fewer texts but with higher accuracy.
+- **OCR Model**: Returns fewer texts but with higher accuracy.
 - **PaddleOCR**: Returns more texts with slightly lower overall confidence.
 - **Recommendation**: Use a combination to balance coverage and accuracy.
 
@@ -201,9 +216,15 @@ Key tunable parameters (typically found in the code):
 
 ## 🙏 Acknowledgments & Contact
 - **YOLOv8** – Ultralytics
-- **SVTR v6** – STR research community
+- **OCR Model** – STR research community
 - **PaddleOCR** – PaddlePaddle team
 - **PySide6/Qt** – Qt team
 
-**Author:** Tôn Thất Thanh Tuấn  
+**Authors:** 
+- Nguyễn Quốc Hiệu 
+- Đoàn Trung Kiên 
+- Lê Nguyễn Gia Phúc  
+- Phan Quốc Đại Sơn   
+- Tôn Thất Thanh Tuấn  
+
 Feel free to reach out for questions or contributions.
