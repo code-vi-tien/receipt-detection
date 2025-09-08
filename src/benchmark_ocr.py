@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-OCR Performance Benchmark
-Benchmarks OCR Model vs PaddleOCR on multiple images
+OCR Performance Benchmark with PaddleOCR SVTR
+Uses DBNet for detection and SVTR for recognition
 """
 
 from pathlib import Path
@@ -9,17 +9,19 @@ import json
 import time
 import sys
 import os
+import numpy as np
 from statistics import mean, stdev
+from PIL import Image
+from paddleocr import PaddleOCR
 
 # Add paths
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 from yolo_detect_bill.bill_detector import BillDetector
-from baseline_model.baseline_ocr import Baseline_Model
 import cv2
 
 class OCRBenchmark:
-    """OCR performance benchmark"""
+    """OCR performance benchmark with DBNet + SVTR"""
     
     def __init__(self):
         # Initialize YOLO
@@ -27,21 +29,59 @@ class OCRBenchmark:
         self.yolo_detector = BillDetector(model_path=str(yolo_model_path))
         self.yolo_detector.load_model()
         
-        # Initialize PaddleOCR
-        from paddleocr import PaddleOCR
+        # Initialize engines
         src_folder = Path(__file__).parent
         project_root = src_folder.parent
         det_model_path = str(project_root / "dbnet" / "model")
-        
-        self.ocr_engine = PaddleOCR(
-            det_model_dir=str(det_model_path),
-            rec=True,
+        rec_model_path = str(project_root / "svtr" / "model")
+
+        # Detection-only engine (DBNet)
+        print("🔧 Loading DBNet detection engine...")
+        self.det_engine = PaddleOCR(
+            det_model_dir=det_model_path,
+            rec=False,  # Disable recognition
             use_angle_cls=False,
             use_gpu=False,
-            lang='ch'
+            show_log=False
         )
+        
+        # Recognition with SVTR
+        print("🔧 Loading SVTR recognition engine...")
+        try:
+            # SVTR model configuration
+            # SVTR is more robust for scene text and supports various text orientations
+            self.svtr_engine = PaddleOCR(
+                det=False,  # Disable detection
+                rec=True,   # Enable recognition only
+                use_angle_cls=False,
+                use_gpu=False,
+                lang='en',
+                rec_model_dir=rec_model_path,  # Use default SVTR model
+                rec_algorithm='SVTR_LCNet',  # Specify SVTR algorithm
+                show_log=False
+            )
+            print("✅ Manual DBNet+SVTR pipeline loaded successfully!")
+        except Exception as e:
+            print(f"❌ Failed to load SVTR model: {e}")
+            print("Falling back to default PaddleOCR recognition...")
+            self.svtr_engine = PaddleOCR(
+                det=False,
+                rec=True,
+                use_angle_cls=False,
+                use_gpu=False,
+                lang='en',
+                show_log=False
+            )
 
-        self.baseline_engine = Baseline_Model()
+        # Initialize baseline PaddleOCR
+        print("🔧 Loading baseline PaddleOCR...")
+        self.baseline_engine = PaddleOCR(
+            use_angle_cls=False,
+            use_gpu=False,
+            lang='en',
+            show_log=False
+        )
+        print("✅ Baseline PaddleOCR loaded successfully!")
     
     def crop_bill_region(self, image, confidence_threshold=0.1):
         """Crop best bill region from image"""
@@ -67,71 +107,272 @@ class OCRBenchmark:
         
         return image[y1:y2, x1:x2]
     
-    def benchmark_baseline(self, bill_crop):
-        """Benchmark PaddleOCR"""
-        temp_path = "temp_benchmark_baseline.jpg"
-        cv2.imwrite(temp_path, bill_crop)
+    def preprocess_image(self, image, min_height=64, min_width=64, max_height=1024, max_width=1024):
+        """Preprocess image for OCR detection"""
+        h, w = image.shape[:2]
+        
+        # Apply light enhancement if needed
+        processed_image = image.copy()
+        
+        # Only apply enhancement if image is very dark/low contrast
+        gray = cv2.cvtColor(processed_image, cv2.COLOR_BGR2GRAY)
+        mean_brightness = np.mean(gray)
+        
+        if mean_brightness < 80 or mean_brightness > 220:
+            # Apply mild contrast enhancement
+            lab = cv2.cvtColor(processed_image, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(16,16))
+            l = clahe.apply(l)
+            enhanced = cv2.merge([l, a, b])
+            processed_image = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+       
+        # Resize if image is too small
+        if h < min_height or w < min_width:
+            scale_h = min_height / h if h < min_height else 1.0
+            scale_w = min_width / w if w < min_width else 1.0
+            scale = max(scale_h, scale_w)
+            
+            new_h = max(int(h * scale), min_height)
+            new_w = max(int(w * scale), min_width)
+            
+            processed_image = cv2.resize(processed_image, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+            print(f"   🔍 Upscaled from {w}x{h} to {new_w}x{new_h}")
+        
+        # Resize if image is too large
+        elif h > max_height or w > max_width:
+            scale_h = max_height / h if h > max_height else 1.0
+            scale_w = max_width / w if w > max_width else 1.0
+            scale = min(scale_h, scale_w)
+            
+            new_h = int(h * scale)
+            new_w = int(w * scale)
+            
+            processed_image = cv2.resize(processed_image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+            print(f"   🔍 Downscaled from {w}x{h} to {new_w}x{new_h}")
+        
+        return processed_image
 
-        start_time = time.time()
-        result = self.baseline_engine.predict_text(temp_path)
-        processing_time = time.time() - start_time
+    def dbnet_postprocess(self, image, text_box, min_width=16, min_height=12, max_aspect_ratio=25):
+        """Crop text regions from DBNet output for SVTR processing"""
+        # DBNet text_box format: [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+        points = np.array(text_box, dtype=np.float32).reshape(-1, 2)
         
-        import os
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+        # Get bounding rectangle from the 4 corner points
+        rect = cv2.boundingRect(points)
+        x, y, w, h = rect
         
-        texts = result.get('texts', [])
+        # SVTR-specific size filtering
+        # SVTR works better with slightly larger minimum dimensions
+        if w < min_width or h < min_height:
+            return None
         
-        return {
-            'model': 'PaddleOCR',
-            'processing_time': processing_time,
-            'text_count': len(texts),
-            'texts': texts,
-            'avg_confidence': mean([t['confidence'] for t in texts]) if texts else 0,
-            'high_confidence_count': sum(1 for t in texts if t['confidence'] > 0.9)
-        }
+        # SVTR handles moderate aspect ratios well
+        aspect_ratio = max(w, h) / max(min(w, h), 1)
+        if aspect_ratio > max_aspect_ratio:
+            return None
+        
+        # Size limit for SVTR processing
+        if w > 1500 or h > 800:
+            return None
+        
+        # Add padding for SVTR (needs more context)
+        padding = 8
+        img_h, img_w = image.shape[:2]
+        
+        x1 = max(0, x - padding)
+        y1 = max(0, y - padding)
+        x2 = min(img_w, x + w + padding)
+        y2 = min(img_h, y + h + padding)
+        
+        # Ensure minimum size after padding
+        final_w = x2 - x1
+        final_h = y2 - y1
+        
+        if final_w < min_width or final_h < min_height:
+            return None
+        
+        # Crop the region
+        cropped = image[y1:y2, x1:x2]
+        
+        if cropped.size == 0:
+            return None
+            
+        return cropped
     
-    def benchmark_ocr(self, bill_crop):
-        """Benchmark OCR Model"""
-        temp_path = "temp_benchmark_ocr.jpg"
-        cv2.imwrite(temp_path, bill_crop)
+    def svtr_preprocess(self, image):
+        """Preprocess cropped text region for SVTR input"""
+        if image is None or image.size == 0:
+            return None
+            
+        h, w = image.shape[:2]
         
-        start_time = time.time()
-        result = self.ocr_engine.ocr(temp_path, cls=False)
-        processing_time = time.time() - start_time
+        # Minimum size check for SVTR
+        if h < 12 or w < 16:
+            return None
         
-        import os
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+        processed = image.copy()
         
-        texts = []
-        if result and len(result[0]) > 0:
-            for line in result[0]:
-                coords = line[0]
-                text_info = line[1]
-                text = text_info[0]
-                confidence = text_info[1]
+        # SVTR-specific preprocessing
+        # 1. Ensure adequate height for SVTR (works best with height >= 32)
+        target_height = 48  # SVTR optimal height
+        if h < target_height:
+            scale = target_height / h
+            new_w = int(w * scale)
+            new_h = target_height
+            processed = cv2.resize(processed, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+            h, w = new_h, new_w
+        
+        # 2. Apply contrast enhancement for better SVTR recognition
+        gray = cv2.cvtColor(processed, cv2.COLOR_BGR2GRAY)
+        mean_brightness = np.mean(gray)
+        
+        # More aggressive enhancement for SVTR
+        if mean_brightness < 100 or mean_brightness > 180:
+            # Apply CLAHE for better text contrast
+            lab = cv2.cvtColor(processed, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(4, 4))
+            l = clahe.apply(l)
+            processed = cv2.merge([l, a, b])
+            processed = cv2.cvtColor(processed, cv2.COLOR_LAB2BGR)
+        
+        # 3. Handle extreme aspect ratios for SVTR
+        aspect_ratio = w / h
+        if aspect_ratio > 20:  # Very wide text
+            # Slightly reduce width to improve recognition
+            new_w = min(w, h * 18)
+            if new_w != w:
+                processed = cv2.resize(processed, (new_w, h), interpolation=cv2.INTER_AREA)
+        
+        return processed
+    
+    def ocr_pipeline(self, image):
+        """Manual pipeline: DBNet detection -> SVTR recognition"""
+        # Step 1: Detection with DBNet
+        print("   🔍 Running DBNet detection...")
+        det_result = self.det_engine.ocr(image, rec=False)
+        
+        if not det_result or not det_result[0]:
+            return {
+                'results': [],
+                'text_count': 0,
+                'avg_confidence': 0,
+                'high_confidence_count': 0,
+                'confidences': []
+            }
+        
+        detected_boxes = det_result[0]
+        print(f"   🔍 DBNet detected {len(detected_boxes)} text regions")
+        
+        # Step 2: Recognition with SVTR
+        recognized_results = []
+        confidences = []
+        
+        for i, text_box in enumerate(detected_boxes):
+            # Crop text region from DBNet output
+            text_region = self.dbnet_postprocess(image, text_box)
+            if text_region is None:
+                continue
+            
+            # Preprocess for SVTR
+            svtr_input = self.svtr_preprocess(text_region)
+            if svtr_input is None:
+                continue
+            
+            try:
+                # Recognition with SVTR
+                # Use recognition-only mode
+                svtr_result = self.svtr_engine.ocr(svtr_input, det=False, rec=True, cls=False)
                 
-                texts.append({
-                    "text": text,
-                    "confidence": confidence,
-                    "coordinates": coords
-                })
+                if svtr_result and len(svtr_result) > 0 and svtr_result[0] is not None:
+                    for line in svtr_result[0]:
+                        if line is not None and len(line) >= 2:
+                            # SVTR returns [text, confidence] format in rec-only mode
+                            text_info = line
+                            if len(text_info) >= 2:
+                                text = str(text_info[0]) if text_info[0] is not None else ""
+                                confidence = float(text_info[1]) if text_info[1] is not None else 0.0
+                                
+                                # Filter results
+                                if confidence > 0.2 and text.strip() and len(text.strip()) >= 1:
+                                    recognized_results.append({
+                                        'coords': text_box,  # Use original DBNet coordinates
+                                        'text': text.strip(),
+                                        'confidence': confidence
+                                    })
+                                    confidences.append(confidence)
+                                    break  # Take only the best result per region
+                            
+            except Exception as e:
+                print(f"   ⚠️ SVTR recognition failed for region {i}: {e}")
+                continue
+        
+        # Calculate metrics
+        avg_confidence = sum(confidences) / len(confidences) if confidences else 0
+        high_confidence_count = sum(1 for c in confidences if c > 0.9)
         
         return {
-            'model': 'OCR Model',
-            'processing_time': processing_time,
-            'text_count': len(texts),
-            'texts': texts,
-            'avg_confidence': mean([t['confidence'] for t in texts]) if texts else 0,
-            'high_confidence_count': sum(1 for t in texts if t['confidence'] > 0.9)
+            'results': recognized_results,
+            'text_count': len(recognized_results),
+            'avg_confidence': avg_confidence,
+            'high_confidence_count': high_confidence_count,
+            'confidences': confidences
         }
-    
+
+    def process_image(self, image, engine_name="custom"):
+        """Process image with specified OCR engine"""
+        if engine_name == "custom":
+            processed_image = self.preprocess_image(image)
+            return self.ocr_pipeline(processed_image)
+            
+        elif engine_name == "baseline":
+            processed_image = self.preprocess_image(image)
+            result = self.baseline_engine.ocr(processed_image, cls=False)
+            
+            if result is None or not isinstance(result, list) or len(result) == 0:
+                result = [[]]
+            elif result[0] is None:
+                result = [[]]
+            
+            # Parse baseline results
+            parsed_results = []
+            confidences = []
+
+            if result and len(result) > 0 and result[0] is not None:
+                for line in result[0]:
+                    if line is not None and len(line) >= 2:
+                        coords = line[0]
+                        text_info = line[1]
+                        
+                        if text_info is not None and len(text_info) >= 2:
+                            text = str(text_info[0]) if text_info[0] is not None else ""
+                            confidence = float(text_info[1]) if text_info[1] is not None else 0.0
+                            
+                            if confidence > 0.1 and text.strip() and len(text.strip()) > 0:
+                                parsed_results.append({
+                                    'coords': coords,
+                                    'text': text.strip(),
+                                    'confidence': confidence
+                                })
+                                confidences.append(confidence)
+            
+            avg_confidence = sum(confidences) / len(confidences) if confidences else 0
+            high_confidence_count = sum(1 for c in confidences if c > 0.9)
+            
+            return {
+                'results': parsed_results,
+                'text_count': len(parsed_results),
+                'avg_confidence': avg_confidence,
+                'high_confidence_count': high_confidence_count,
+                'confidences': confidences
+            }
+
     def run_benchmark(self, num_images=10):
         """Run benchmark on multiple images"""
-        print("🏁 OCR Performance Benchmark")
+        print("🏁 OCR Performance Benchmark - SVTR Recognition")
         print("=" * 60)
-        
+
         # Get test images
         image_folder = Path(__file__).parent.parent / "image_test"
         test_images = list(image_folder.glob("*.jpg"))[:num_images]
@@ -142,146 +383,93 @@ class OCRBenchmark:
         
         print(f"📸 Testing {len(test_images)} images...")
         
-        baseline_results = []
         ocr_results = []
+        baseline_results = []
         
         for i, image_path in enumerate(test_images, 1):
             print(f"\n🔄 Processing {i}/{len(test_images)}: {image_path.name}")
             
-            # Load and crop image
             image = cv2.imread(str(image_path))
+            if image is None:
+                print(f"❌ Could not load image: {image_path.name}")
+                continue
+
             bill_crop = self.crop_bill_region(image)
             
             if bill_crop is None:
                 print(f"⚠️ No bill detected in {image_path.name}")
                 continue
+
+            # Process with custom engine
+            print("   🔧 Processing with Custom DBNet+SVTR...")
+            start_time = time.time()
+            ocr_result = self.process_image(bill_crop, "custom")
+            ocr_time = time.time() - start_time
+
+            print("   🔧 Processing with Baseline PaddleOCR...")
+            start_time = time.time()
+            baseline_result = self.process_image(bill_crop, "baseline")
+            baseline_time = time.time() - start_time    
             
-            # Benchmark PaddleOCR
-            print("   🤖 Testing PaddleOCR...")
-            baseline_result = self.benchmark_baseline(bill_crop)
-            baseline_result['image'] = image_path.name
-            baseline_results.append(baseline_result)
+            # Store results
+            ocr_results.append({
+                'image': image_path.name,
+                'processing_time': ocr_time,
+                'text_count': ocr_result['text_count'],
+                'avg_confidence': ocr_result['avg_confidence'],
+                'high_confidence_count': ocr_result['high_confidence_count'],
+                'results': ocr_result['results']
+            })
             
-            # Benchmark OCR Model
-            print("   🧠 Testing OCR Model...")
-            ocr_result = self.benchmark_ocr(bill_crop)
-            ocr_result['image'] = image_path.name
-            ocr_results.append(ocr_result)
-            
-            print(f"   ✅ Paddle: {baseline_result['text_count']} texts ({baseline_result['processing_time']:.2f}s)")
-            print(f"   ✅ OCR Mdodel: {ocr_result['text_count']} texts ({ocr_result['processing_time']:.2f}s)")
-        
-        # Generate report
-        self.generate_report(baseline_results, ocr_results)
+            baseline_results.append({
+                'image': image_path.name,
+                'processing_time': baseline_time,
+                'text_count': baseline_result['text_count'],
+                'avg_confidence': baseline_result['avg_confidence'],
+                'high_confidence_count': baseline_result['high_confidence_count'],
+                'results': baseline_result['results']
+            })
+
+            print(f"   ✅ Custom:   {ocr_result['text_count']} texts in {ocr_time:.2f}s")
+            print(f"   ✅ Baseline: {baseline_result['text_count']} texts in {baseline_time:.2f}s")
+                
+        if baseline_results:
+            print(f"\n📊 Generating report...")
+            self.generate_report(ocr_results, baseline_results)
+        else:
+            print("❌ No images were successfully processed!")
     
-    def generate_report(self, baseline_results, ocr_results):
+    def generate_report(self, ocr_results, baseline_results):
         """Generate benchmark report"""
-        print(f"\n📊 BENCHMARK REPORT")
+        print(f"\n📊 BENCHMARK REPORT - SVTR Recognition")
         print("=" * 60)
-        
-        if not baseline_results or not ocr_results:
-            print("❌ No results to analyze!")
-            return
-        
-        # Processing time analysis
-        baseline_times = [r['processing_time'] for r in baseline_results]
-        ocr_times = [r['processing_time'] for r in ocr_results]
-        
-        print(f"⏱️ Processing Time (seconds):")
-        print(f"   PaddleOCR:   avg={mean(baseline_times):.3f}s, std={stdev(baseline_times):.3f}s")
-        print(f"   OCR Model: avg={mean(ocr_times):.3f}s, std={stdev(ocr_times):.3f}s")
-        print(f"   Speed ratio: {mean(ocr_times)/mean(baseline_times):.2f}x (OCR Model faster)")
-        
-        # Text detection analysis
+
+        baseline_times = [r['processing_time'] for r in baseline_results if r['processing_time'] > 0]
         baseline_counts = [r['text_count'] for r in baseline_results]
-        ocr_counts = [r['text_count'] for r in ocr_results]
-        
-        print(f"\n📝 Text Detection Count:")
-        print(f"   PaddleOCR:   avg={mean(baseline_counts):.1f}, std={stdev(baseline_counts):.1f}")
-        print(f"   OCR Model: avg={mean(ocr_counts):.1f}, std={stdev(ocr_counts):.1f}")
-        
-        # Confidence analysis
         baseline_confs = [r['avg_confidence'] for r in baseline_results if r['avg_confidence'] > 0]
-        ocr_confs = [r['avg_confidence'] for r in ocr_results if r['avg_confidence'] > 0]
-        
-        if baseline_confs and ocr_confs:
-            print(f"\n🎯 Average Confidence:")
-            print(f"   PaddleOCR:   {mean(baseline_confs):.3f}")
-            print(f"   OCR Model: {mean(ocr_confs):.3f}")
-        
-        # High confidence analysis
-        baseline_high = sum(r['high_confidence_count'] for r in baseline_results)
-        baseline_total = sum(r['text_count'] for r in baseline_results)
-        ocr_high = sum(r['high_confidence_count'] for r in ocr_results)
-        ocr_total = sum(r['text_count'] for r in ocr_results)
-        
-        print(f"\n🏆 High Confidence (>0.9) Ratio:")
-        if baseline_total > 0:
-            print(f"   PaddleOCR:   {baseline_high}/{baseline_total} ({baseline_high/baseline_total*100:.1f}%)")
-        if ocr_total > 0:
-            print(f"   OCR Model: {ocr_high}/{ocr_total} ({ocr_high/ocr_total*100:.1f}%)")
-        
-        # Individual image comparison
-        print(f"\n🔍 Individual Image Analysis:")
-        print("-" * 60)
-        print(f"{'Image':<20} {'OCR Model(t/s)':<12} {'PaddleOCR(t/s)':<12} {'Winner'}")
-        print("-" * 60)
-        
-        baseline_wins = 0
-        ocr_wins = 0
-        
-        for i in range(min(len(baseline_results), len(ocr_results))):
-            baseline = baseline_results[i]
-            ocr = ocr_results[i]
+
+        print(f"⏱️  BASELINE PROCESSING TIME: avg={mean(baseline_times):.3f}s")
+        print(f"📝 BASELINE TEXTS RECOGNIZED: avg={mean(baseline_counts):.1f}")
+        if baseline_confs:
+            print(f"🎯 BASELINE CONFIDENCE: {mean(baseline_confs):.3f}")
+
+        if ocr_results and any(r['text_count'] > 0 for r in ocr_results):
+            ocr_times = [r['processing_time'] for r in ocr_results if r['processing_time'] > 0]
+            ocr_counts = [r['text_count'] for r in ocr_results]
+            ocr_confs = [r['avg_confidence'] for r in ocr_results if r['avg_confidence'] > 0]
             
-            # Determine winner (more texts + higher confidence + faster)
-            baseline_score = baseline['text_count'] * baseline['avg_confidence'] / baseline['processing_time']
-            ocr_score = ocr['text_count'] * ocr['avg_confidence'] / ocr['processing_time']
-            
-            if baseline_score > ocr_score:
-                winner = "PaddleOCR ⭐"
-                baseline_wins += 1
-            else:
-                winner = "OCR Model ⭐"
-                ocr_wins += 1
-            
-            baseline_info = f"{baseline['text_count']}/{baseline['processing_time']:.2f}s"
-            ocr_info = f"{ocr['text_count']}/{ocr['processing_time']:.2f}s"
-            print(f"{baseline['image'][:18]:<20} {baseline_info:<12} {ocr_info:<12} {winner}")
-        
-        print("-" * 60)
-        print(f"🏆 Overall Winner: {'PaddleOCR' if baseline_wins > ocr_wins else 'OCR Model'} ({max(baseline_wins, ocr_wins)}/{baseline_wins + ocr_wins} images)")
-        
-        # Save detailed results into folder benchmark_ocr_result
-        benchmark_data = {
-            'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
-            'summary': {
-                'baseline_avg_time': mean(baseline_times),
-                'ocr_avg_time': mean(ocr_times),
-                'baseline_avg_texts': mean(baseline_counts),
-                'ocr_avg_texts': mean(ocr_counts),
-                'baseline_wins': baseline_wins,
-                'ocr_wins': ocr_wins
-            },
-            'baseline_results': baseline_results,
-            'ocr_results': ocr_results
-        }
-        
-        results_folder = os.path.join(os.path.dirname(__file__), "benchmark_ocr_result")
-        if not os.path.exists(results_folder):
-            os.makedirs(results_folder)
-        results_file = os.path.join(results_folder, "benchmark_results.json")
-        
-        with open(results_file, 'w', encoding='utf-8') as f:
-            json.dump(benchmark_data, f, indent=2, ensure_ascii=False, default=str)
-        
-        print(f"\n💾 Detailed results saved to: {results_file}")
-        print("🎉 Benchmark completed!")
+            if ocr_times:
+                print(f"⏱️  CUSTOM PROCESSING TIME: avg={mean(ocr_times):.3f}s")
+                print(f"📝 CUSTOM TEXTS RECOGNIZED: avg={mean(ocr_counts):.1f}")
+            if ocr_confs:
+                print(f"🎯 CUSTOM CONFIDENCE: {mean(ocr_confs):.3f}")
+
+        print(f"\n🎉 SVTR Benchmark completed!")
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description='OCR Performance Benchmark')
-    parser.add_argument('--images', type=int, default=10, help='Number of images to test (default: 10)')
+    parser = argparse.ArgumentParser(description='OCR Performance Benchmark with SVTR')
+    parser.add_argument('--images', type=int, default=10, help='Number of images to test')
     args = parser.parse_args()
     
     benchmark = OCRBenchmark()

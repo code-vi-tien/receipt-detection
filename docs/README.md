@@ -66,7 +66,7 @@ The GUI (implemented in Vietnamese) uses a modern dark theme and provides real�
 ## 📋 Key Features
 ### 🔍 Detection & Processing
 - Automatic detection (YOLO) → Smart cropping → Pre‑processing.
-- Dual OCR (SVTR v6 + PaddleOCR) with confidence analysis.
+- Dual OCR (SVTR + DBNet vs PaddleOCR) with confidence analysis.
 
 ### 📊 Analytics & Stats
 - Compare two OCR engines with multiple performance metrics.
@@ -158,14 +158,15 @@ receipt-detection/
 │  └── check_model.py
 ├── yolo_detect_bill/                     # YOLO detection module and models
 │   └── bill_models.pt                    # YOLO model file (used via subfolder path)
-├── svtr/                                 # SVTR module and models
+├── dbnet/                                # DBNet module and models 
 │   └── model
 │       ├── inference.pdiparams
 |       ├── inference.pdiparams.info
 |       ├── inference.pdmodel
 |       └── inference.yml
-└── dbnet/                                # DBNet module and models
+└── svtr/                                # SVTR module and models
 │   └── model
+│       ├── inference.json
 │       ├── inference.pdiparams
 |       ├── inference.pdiparams.info
 |       ├── inference.pdmodel
@@ -185,8 +186,8 @@ Key tunable parameters (typically found in the code):
 ## ⚡ Performance & Comparison
 | Model        | Texts Detected | Avg Confidence | High Conf (>0.9) | Processing Time |
 |--------------|----------------|----------------|------------------|-----------------|
-| **OCR Model**  | 44             | 0.931          | 89%              | ~2.3s           |
-| **PaddleOCR**| 108            | 0.913          | 67%              | ~1.8s           |
+| **OCR Model**| 87             | 0.858          | 39               | ~5.3s           |
+| **PaddleOCR**| 41             | 0.951          | 37               | ~3.8s           |
 
 - **OCR Model**: Returns fewer texts but with higher accuracy.
 - **PaddleOCR**: Returns more texts with slightly lower overall confidence.
